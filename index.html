@@ -36,6 +36,7 @@
             font-size: 16px;
             font-weight: bold;
             text-shadow: 0 0 8px #0f0;
+            transition: color 0.3s;
         }
         #top-bar {
             display: flex;
@@ -65,7 +66,7 @@
             width: 100%;
             height: 100%;
             background: #0f0;
-            transition: width 0.1s linear;
+            transition: width 0.1s linear, background-color 0.2s;
         }
         #start-screen, #game-over-screen, #tutorial-screen {
             position: absolute;
@@ -149,7 +150,7 @@
             color: #ff0;
             font-size: 18px;
             font-weight: bold;
-            text-shadow: 0 0 10px #ff0;
+            text-shadow: 0 0 10px currentColor;
             opacity: 0;
             transition: opacity 0.2s;
         }
@@ -193,8 +194,10 @@
     <div id="tutorial-screen" class="hidden">
         <div class="title" style="font-size: 24px;">SYSTEM TRAINING</div>
         <div class="subtitle" id="tut-text">
-            Step 1: <b>TAP</b> glitches to destroy them.<br>
-            <span style="color:#00ffff;">Blue = Ice Freeze</span> | <span style="color:#ffd700;">Gold = Energy</span> | <span style="color:#a020f0;">Purple = Splitter</span>
+            Step 1: <b>TAP</b> glitches to destroy them.<br><br>
+            <span style="color:#00ffff;">Blue = Freeze</span> | <span style="color:#ffd700;">Gold = Energy</span> | <span style="color:#a020f0;">Purple = Splitter</span><br>
+            <span style="color:#ff00aa;">Pink Rings = Shielded (3 Taps)</span><br>
+            <span style="color:#ffffff; border: 1px solid #fff; padding: 0 4px;">White Box = Clean Data (DO NOT TAP)</span>
         </div>
         <button class="btn" id="tut-btn">NEXT</button>
     </div>
@@ -270,6 +273,14 @@
                 gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
                 osc.start(now);
                 osc.stop(now + 0.12);
+            } else if (type === 'error') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.25);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.25);
             } else if (type === 'over') {
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(150, now);
@@ -288,7 +299,7 @@
         // Persistence
         let highData = { maxLevel: 1, highScore: 0, hasSeenTut: false };
         function loadSavedProgress() {
-            const saved = localStorage.getItem('matrix_runner_v7');
+            const saved = localStorage.getItem('matrix_runner_v8');
             if (saved) {
                 try { highData = { ...highData, ...JSON.parse(saved) }; } catch(e){}
             }
@@ -305,7 +316,7 @@
         function saveProgress() {
             if (level > highData.maxLevel) highData.maxLevel = level;
             if (score > highData.highScore) highData.highScore = score;
-            localStorage.setItem('matrix_runner_v7', JSON.stringify(highData));
+            localStorage.setItem('matrix_runner_v8', JSON.stringify(highData));
             updateHighScoreDisplays();
         }
 
@@ -327,6 +338,7 @@
         let isBulletTime = false;
         let freezeTimer = 0;
         
+        let activeTouches = 0;
         let isPressing = false;
         let pressTimer = null;
         let touchPos = { x: 0, y: 0 };
@@ -373,15 +385,21 @@
                 this.vx = vxOverride || 0;
                 this.baseSpeed = 1.0 + (level * 0.22);
                 this.char = chars.charAt(Math.floor(Math.random() * chars.length));
+                this.hp = 1;
 
                 const rand = Math.random();
                 if (typeOverride) {
                     this.type = typeOverride;
-                } else if (rand > 0.91) {
+                } else if (rand > 0.92 && level >= 3) {
+                    this.type = 'shielded';
+                    this.hp = 3;
+                } else if (rand > 0.82) {
+                    this.type = 'decoy';
+                } else if (rand > 0.72) {
                     this.type = 'gold';
-                } else if (rand > 0.82 && level >= 8) {
+                } else if (rand > 0.62 && level >= 5) {
                     this.type = 'blue';
-                } else if (rand > 0.70) {
+                } else if (rand > 0.50) {
                     this.type = 'purple';
                 } else {
                     this.type = 'red';
@@ -391,17 +409,33 @@
                     red: '#f00',
                     blue: '#00ffff',
                     gold: '#ffd700',
-                    purple: '#a020f0'
+                    purple: '#a020f0',
+                    shielded: '#ff00aa',
+                    decoy: '#ffffff'
                 };
             }
 
-            update(speedMult) {
+            update(speedMult, allGlitches) {
                 if (freezeTimer > 0) return;
                 this.y += this.baseSpeed * speedMult;
                 this.x += this.vx * speedMult;
 
-                if (this.x <= 10) {
-                    this.x = 10;
+                if (allGlitches) {
+                    for (let other of allGlitches) {
+                        if (other === this) continue;
+                        let dx = this.x - other.x;
+                        let dy = this.y - other.y;
+                        let dist = Math.hypot(dx, dy);
+                        
+                        let minDist = (this.type === 'shielded' || other.type === 'shielded') ? 45 : 35;
+                        if (dist < minDist && dist > 0) {
+                            this.x += dx > 0 ? 0.8 : -0.8;
+                        }
+                    }
+                }
+
+                if (this.x <= 15) {
+                    this.x = 15;
                     this.vx = Math.abs(this.vx);
                 } else if (this.x >= canvas.width - 25) {
                     this.x = canvas.width - 25;
@@ -415,17 +449,38 @@
 
             draw(ctx) {
                 ctx.save();
-                const color = isBulletTime ? '#00ffff' : this.colorMap[this.type];
+                const isClean = this.type === 'decoy';
+                // Decoys don't change color in bullet time
+                const color = (isBulletTime && !isClean) ? '#00ffff' : this.colorMap[this.type];
                 
-                ctx.fillStyle = '#000000';
-                ctx.beginPath();
-                ctx.arc(this.x + 8, this.y - 8, 20, 0, Math.PI * 2);
-                ctx.fill();
+                let currentFontSize = fontSize + 8;
+                if (this.type === 'shielded') currentFontSize += 8;
+                
+                ctx.font = 'bold ' + currentFontSize + 'px monospace';
+                
+                if (this.type === 'shielded') {
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < this.hp; i++) {
+                        ctx.beginPath();
+                        ctx.arc(this.x + 8, this.y - 8, 22 + (i * 8), 0, Math.PI * 2);
+                        ctx.strokeStyle = `rgba(255, 0, 170, ${0.5 + i * 0.2})`;
+                        ctx.stroke();
+                    }
+                }
+
+                if (isClean) {
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.strokeRect(this.x - 4, this.y - 24, 25, 30);
+                }
+
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = '#000000';
+                ctx.strokeText(this.char, this.x, this.y);
 
                 ctx.fillStyle = color;
-                ctx.shadowBlur = isBulletTime ? 20 : 14;
+                ctx.shadowBlur = (isBulletTime && !isClean) ? 25 : 14;
                 ctx.shadowColor = color;
-                ctx.font = 'bold ' + (fontSize + 8) + 'px monospace';
                 ctx.fillText(this.char, this.x, this.y);
                 ctx.restore();
             }
@@ -466,7 +521,6 @@
 
             ctx.font = fontSize + 'px monospace';
             const speedMult = freezeTimer > 0 ? 0 : (isBulletTime ? 0.15 : 1.0);
-
             const bgSpeedMult = speedMult * 0.15;
 
             for (let i = 0; i < drops.length; i++) {
@@ -488,12 +542,16 @@
 
                 for (let i = glitches.length - 1; i >= 0; i--) {
                     const g = glitches[i];
-                    g.update(speedMult);
+                    g.update(speedMult, glitches);
                     g.draw(ctx);
 
                     if (g.y > canvas.height + 20) {
-                        endGame();
-                        break;
+                        if (g.type === 'decoy') {
+                            glitches.splice(i, 1); // Clean data exits safely
+                        } else {
+                            endGame();
+                            break;
+                        }
                     }
                 }
 
@@ -518,75 +576,110 @@
             requestAnimationFrame(gameLoop);
         }
 
-        function handlePointerDown(e) {
-            if (!isPlaying) return;
+        // Dedicated Touch Processor for Multi-Touch
+        function processTap(pt) {
             initAudio();
-
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            touchPos = { x: clientX, y: clientY };
-
             let hit = false;
+            
             for (let i = glitches.length - 1; i >= 0; i--) {
                 const g = glitches[i];
-                const dist = Math.hypot(g.x - clientX, g.y - clientY);
+                let hitRadius = g.type === 'shielded' ? 55 : 45;
+                const dist = Math.hypot(g.x - pt.x, g.y - pt.y);
 
-                if (dist < 45) {
+                if (dist < hitRadius) {
                     hit = true;
-                    triggerExplosion(g.x, g.y, g.colorMap[g.type]);
-                    triggerVibrate(20);
-
-                    if (g.type === 'blue') {
-                        freezeTimer = 60;
-                        playSound('freeze');
-                    } else if (g.type === 'gold') {
-                        bulletTimeEnergy = Math.min(100, bulletTimeEnergy + 40);
-                        playSound('zap');
-                    } else if (g.type === 'purple') {
-                        playSound('zap');
-                        glitches.push(new GlitchTarget(g.x - 15, g.y - 10, 'red', -2.0));
-                        glitches.push(new GlitchTarget(g.x + 15, g.y - 10, 'red', 2.0));
-                    } else {
-                        playSound('zap');
-                    }
-
-                    glitches.splice(i, 1);
-
-                    score += 10 * combo * (isBulletTime ? 2 : 1);
-                    combo++;
-                    glitchesCleared++;
-
-                    if (score > highData.highScore) {
-                        highData.highScore = score;
-                        hudHighScoreEl.innerText = score;
-                    }
-
-                    if (combo > 2) {
-                        comboEl.innerText = `COMBO x${combo}!`;
-                        comboEl.style.opacity = '1';
-                        setTimeout(() => { comboEl.style.opacity = '0'; }, 800);
-                    }
-
-                    scoreEl.innerText = `SCORE: ${score}`;
                     
-                    if (glitchesCleared >= level * 6) {
-                        level++;
-                        glitchesCleared = 0;
-                        levelEl.innerText = `LEVEL: ${level}`;
-                        saveProgress();
+                    if (g.type === 'decoy') {
+                        // Bad tap
+                        combo = 1;
+                        bulletTimeEnergy = Math.max(0, bulletTimeEnergy - 30);
+                        playSound('error');
+                        triggerExplosion(g.x, g.y, g.colorMap[g.type]);
+                        triggerVibrate([50, 50]);
+                        glitches.splice(i, 1);
+                        
+                        comboEl.innerText = `COMBO BROKEN!`;
+                        comboEl.style.color = '#f00';
+                        comboEl.style.opacity = '1';
+                        setTimeout(() => { 
+                            comboEl.style.opacity = '0'; 
+                            setTimeout(() => { comboEl.style.color = '#ff0'; }, 200);
+                        }, 800);
                     }
-                    break;
+                    else {
+                        // Good tap
+                        if (g.type === 'shielded') {
+                            g.hp--;
+                            triggerExplosion(g.x, g.y, g.colorMap[g.type]);
+                            playSound('zap');
+                            triggerVibrate(15);
+                            if (g.hp > 0) {
+                                break; // Target survives, stop processing this tap
+                            }
+                        }
+                        
+                        // Target destroyed
+                        triggerVibrate(30);
+                        triggerExplosion(g.x, g.y, g.colorMap[g.type]);
+                        
+                        if (g.type === 'blue') {
+                            freezeTimer = 60;
+                            playSound('freeze');
+                        } else if (g.type === 'gold') {
+                            bulletTimeEnergy = Math.min(100, bulletTimeEnergy + 40);
+                            playSound('zap');
+                        } else if (g.type === 'purple') {
+                            playSound('zap');
+                            glitches.push(new GlitchTarget(g.x - 20, g.y - 10, 'red', -2.5));
+                            glitches.push(new GlitchTarget(g.x + 20, g.y - 10, 'red', 2.5));
+                        } else {
+                            playSound('zap');
+                        }
+
+                        glitches.splice(i, 1);
+
+                        // Shielded targets give 5x points
+                        score += 10 * combo * (isBulletTime ? 2 : 1) * (g.type === 'shielded' ? 5 : 1);
+                        combo++;
+                        glitchesCleared++;
+
+                        if (score > highData.highScore) {
+                            highData.highScore = score;
+                            hudHighScoreEl.innerText = score;
+                        }
+
+                        if (combo > 2) {
+                            comboEl.innerText = `COMBO x${combo}!`;
+                            comboEl.style.color = '#ff0';
+                            comboEl.style.opacity = '1';
+                            setTimeout(() => { comboEl.style.opacity = '0'; }, 800);
+                        }
+
+                        scoreEl.innerText = `SCORE: ${score}`;
+                        
+                        if (glitchesCleared >= level * 6) {
+                            level++;
+                            glitchesCleared = 0;
+                            levelEl.innerText = `LEVEL: ${level}`;
+                            saveProgress();
+                        }
+                    }
+                    break; // Hit confirmed, don't check other targets for this tap
                 }
             }
 
             if (!hit) {
                 combo = 1;
-                isPressing = true;
-                pressTimer = setTimeout(() => {
-                    if (isPressing && bulletTimeEnergy > 15) {
-                        activateBulletTime();
-                    }
-                }, 160);
+                // Start bullet time if we aren't already holding the screen
+                if (!isBulletTime && !isPressing) {
+                    isPressing = true;
+                    touchPos = pt;
+                    pressTimer = setTimeout(() => {
+                        if (isPressing && bulletTimeEnergy > 15 && activeTouches > 0) {
+                            activateBulletTime();
+                        }
+                    }, 160);
+                }
             }
         }
 
@@ -610,7 +703,7 @@
             initAudio();
             tutStep++;
             if (tutStep === 2) {
-                tutText.innerHTML = "Step 2: <b>HOLD SCREEN</b> to trigger Tactical Slow-Mo when overwhelmed.";
+                tutText.innerHTML = "Step 2: <b>HOLD SCREEN</b> with one finger to trigger Tactical Slow-Mo. Tap with other fingers to clear targets.";
             } else {
                 highData.hasSeenTut = true;
                 saveProgress();
@@ -660,25 +753,37 @@
             gameOverScreen.classList.remove('hidden');
         }
 
-        // Global listeners: Ignore touches/clicks on UI buttons
+        // Global Event Listeners
         window.addEventListener('mousedown', (e) => {
             if (e.target.tagName === 'BUTTON' || e.target.closest('.btn')) return;
-            handlePointerDown(e);
+            if (!isPlaying) return;
+            activeTouches = 1;
+            processTap({ x: e.clientX, y: e.clientY });
         });
 
-        window.addEventListener('mouseup', handlePointerUp);
+        window.addEventListener('mouseup', () => {
+            activeTouches = 0;
+            handlePointerUp();
+        });
 
         window.addEventListener('touchstart', (e) => {
             if (e.target.tagName === 'BUTTON' || e.target.closest('.btn')) return;
-            if (isPlaying) {
-                e.preventDefault();
-                handlePointerDown(e);
+            if (!isPlaying) return;
+            e.preventDefault();
+            
+            activeTouches = e.touches.length;
+            
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                processTap({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
             }
         }, { passive: false });
 
         window.addEventListener('touchend', (e) => {
             if (e.target.tagName === 'BUTTON' || e.target.closest('.btn')) return;
-            handlePointerUp();
+            activeTouches = e.touches.length;
+            if (activeTouches === 0) {
+                handlePointerUp();
+            }
         });
 
         document.getElementById('start-btn').addEventListener('click', onPlayClicked);
