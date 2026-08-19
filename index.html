@@ -134,6 +134,7 @@
             cursor: pointer;
             box-shadow: 0 0 10px #0f0;
             text-shadow: 0 0 5px #0f0;
+            pointer-events: auto;
         }
         .btn:active {
             background: #0f0;
@@ -230,10 +231,7 @@
         const tutText = document.getElementById('tut-text');
         const tutBtn = document.getElementById('tut-btn');
 
-        // English, Numbers, Symbols & Greek Letters
         const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+-/<>~ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω';
-        
-        // Increased font size and spacing to reduce visual clutter
         const fontSize = 20; 
         let columns = 0;
         let drops = [];
@@ -241,8 +239,14 @@
         // Audio System
         let audioCtx = null;
         function initAudio() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
         }
+
         function playSound(type) {
             if (!audioCtx) return;
             const osc = audioCtx.createOscillator();
@@ -413,13 +417,11 @@
                 ctx.save();
                 const color = isBulletTime ? '#00ffff' : this.colorMap[this.type];
                 
-                // Solid black backdrop circle to completely isolate interactive targets from background noise
                 ctx.fillStyle = '#000000';
                 ctx.beginPath();
                 ctx.arc(this.x + 8, this.y - 8, 20, 0, Math.PI * 2);
                 ctx.fill();
 
-                // High-visibility target symbol
                 ctx.fillStyle = color;
                 ctx.shadowBlur = isBulletTime ? 20 : 14;
                 ctx.shadowColor = color;
@@ -446,7 +448,6 @@
         }
 
         function gameLoop() {
-            // Faster fade rate (0.28 opacity) eliminates lingering visual motion trails
             ctx.fillStyle = isBulletTime ? 'rgba(0, 15, 10, 0.3)' : 'rgba(0, 0, 0, 0.28)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -466,7 +467,6 @@
             ctx.font = fontSize + 'px monospace';
             const speedMult = freezeTimer > 0 ? 0 : (isBulletTime ? 0.15 : 1.0);
 
-            // Slower background rain speed
             const bgSpeedMult = speedMult * 0.15;
 
             for (let i = 0; i < drops.length; i++) {
@@ -474,7 +474,6 @@
                 const x = i * fontSize;
                 const y = drops[i] * fontSize;
 
-                // Soft, low-contrast background color (rgba opacity 0.28) prevents eye strain
                 ctx.fillStyle = isBulletTime ? 'rgba(0, 80, 80, 0.3)' : 'rgba(0, 160, 40, 0.28)';
                 ctx.fillText(char, x, y);
 
@@ -608,6 +607,7 @@
         }
 
         function advanceTutorial() {
+            initAudio();
             tutStep++;
             if (tutStep === 2) {
                 tutText.innerHTML = "Step 2: <b>HOLD SCREEN</b> to trigger Tactical Slow-Mo when overwhelmed.";
@@ -631,6 +631,7 @@
         }
 
         function beginActualGame() {
+            initAudio();
             score = 0;
             level = 1;
             combo = 1;
@@ -659,11 +660,26 @@
             gameOverScreen.classList.remove('hidden');
         }
 
-        // Event Listeners
-        window.addEventListener('mousedown', handlePointerDown);
+        // Global listeners: Ignore touches/clicks on UI buttons
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.btn')) return;
+            handlePointerDown(e);
+        });
+
         window.addEventListener('mouseup', handlePointerUp);
-        window.addEventListener('touchstart', (e) => { handlePointerDown(e); e.preventDefault(); }, { passive: false });
-        window.addEventListener('touchend', handlePointerUp);
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.btn')) return;
+            if (isPlaying) {
+                e.preventDefault();
+                handlePointerDown(e);
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.btn')) return;
+            handlePointerUp();
+        });
 
         document.getElementById('start-btn').addEventListener('click', onPlayClicked);
         document.getElementById('restart-btn').addEventListener('click', beginActualGame);
