@@ -337,14 +337,21 @@
     <canvas id="matrix"></canvas>
 
     <script>
+        // --- SUPABASE CONFIGURATION ---
         const SUPABASE_URL = 'https://rynimptqihkeqfmxrbrd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5bmltcHRxaWhrZXFmbXhyYnJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNTgyNzIsImV4cCI6MjEwMjczNDI3Mn0.IphWTzGDw_JARYD06YFqG5jyDh5Xf5fggtZ9330ItpI';
-        
-        // Safe global client initialization to prevent duplicates
-        if (!window.mySupabaseClient) {
-            window.mySupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Safe database client instance initializer preventing declaration collisions
+        if (!window.activeDbClient && window.supabase && typeof window.supabase.createClient === 'function') {
+            window.activeDbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
-        const db = window.mySupabaseClient;
+        
+        const db = window.activeDbClient || {
+            from: () => ({
+                select: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } }) }) }),
+                insert: () => Promise.resolve({ error: { message: "Not connected" } })
+            })
+        };
 
         const canvas = document.getElementById('matrix');
         const ctx = canvas.getContext('2d');
@@ -478,7 +485,7 @@
         async function fetchGlobalLeaderboard() {
             lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #0f0; padding: 20px;">FETCHING GRID SCORES...</td></tr>`;
             try {
-                const { data, error } = await supabase
+                const { data, error } = await db
                     .from('leaderboard')
                     .select('nickname, score, level')
                     .order('score', { ascending: false })
@@ -504,7 +511,7 @@
             updateHighScoreDisplay();
 
             try {
-                const { error } = await supabase
+                const { error } = await db
                     .from('leaderboard')
                     .insert([{ nickname, score, level }]);
 
