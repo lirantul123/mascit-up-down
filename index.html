@@ -1099,7 +1099,7 @@
             isBulletTime = false;
         }
 
-        function onPlayClicked() {
+        async function onPlayClicked() {
             initAudio();
             const nick = nicknameInput.value.trim().toUpperCase();
             
@@ -1123,6 +1123,37 @@
                 isAdmin = false;
             }
 
+            // --- CHECK IF NICKNAME ALREADY EXISTS IN DB ---
+            try {
+                const { data, error } = await db
+                    .from('leaderboard')
+                    .select('player_token, score')
+                    .eq('nickname', nick)
+                    .maybeSingle();
+
+                if (error) throw error;
+
+                if (data) {
+                    // The nickname exists in the database. 
+                    // Check if it belongs to THIS device's stored token:
+                    if (data.player_token !== playerData.playerToken) {
+                        alert(`The operator name "${nick}" is already registered by another user! Please choose a different nickname.`);
+                        nicknameInput.style.borderColor = '#ff0000';
+                        setTimeout(() => nicknameInput.style.borderColor = '#0f0', 800);
+                        return; // Stop them from proceeding
+                    } else {
+                        // It belongs to them! Sync their personal best if needed
+                        if (data.score > playerData.highScore) {
+                            playerData.highScore = data.score;
+                            updateHighScoreDisplay();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Nickname availability check error:', err);
+            }
+
+            // Proceed to tutorial or game
             startScreen.classList.add('hidden');
             if (!playerData.hasSeenTut) {
                 tutorialScreen.classList.remove('hidden');
