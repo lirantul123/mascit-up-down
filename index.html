@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Matrix Defense: Tactical Slow-Mo</title>
+    <!-- Supabase SDK CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -335,6 +337,15 @@
     <canvas id="matrix"></canvas>
 
     <script>
+        const SUPABASE_URL = 'https://rynimptqihkeqfmxrbrd.supabase.co';
+        const SUPABASE_ANON_KEY = 'https://rynimptqihkeqfmxrbrd.supabase.co/rest/v1/';
+        
+        // Safe global client initialization to prevent duplicates
+        if (!window.mySupabaseClient) {
+            window.mySupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+        const db = window.mySupabaseClient;
+
         const canvas = document.getElementById('matrix');
         const ctx = canvas.getContext('2d');
 
@@ -463,23 +474,21 @@
             endHighScoreEl.innerText = `PERSONAL BEST: ${playerData.highScore}`;
         }
 
-        // --- BACKEND API LAYER ---
-        // Replace this URL once you deploy a simple backend or serverless route on Vercel 
-        // (For now, it hooks up to a public demonstration endpoint or falls back smoothly)
-        const LEADERBOARD_API = '/api/leaderboard'; 
-
+        // --- BACKEND API LAYER (SUPABASE) ---
         async function fetchGlobalLeaderboard() {
             lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #0f0; padding: 20px;">FETCHING GRID SCORES...</td></tr>`;
             try {
-                const response = await fetch(LEADERBOARD_API);
-                if (!response.ok) throw new Error('Network response was not ok');
-                const scores = await response.json();
-                renderLeaderboardTable(scores);
+                const { data, error } = await supabase
+                    .from('leaderboard')
+                    .select('nickname, score, level')
+                    .order('score', { ascending: false })
+                    .limit(10);
+
+                if (error) throw error;
+                renderLeaderboardTable(data);
             } catch (err) {
-                // Fallback simulation if backend API isn't wired up yet so layout doesn't break
-                renderLeaderboardTable([
-                    { nickname: playerData.nickname || 'OPERATOR', score: playerData.highScore, level: 1 }
-                ]);
+                console.error('Leaderboard Fetch Error:', err);
+                lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #f00; padding: 20px;">FAILED TO CONNECT TO GRID</td></tr>`;
             }
         }
 
@@ -495,13 +504,13 @@
             updateHighScoreDisplay();
 
             try {
-                await fetch(LEADERBOARD_API, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nickname, score, level })
-                });
+                const { error } = await supabase
+                    .from('leaderboard')
+                    .insert([{ nickname, score, level }]);
+
+                if (error) throw error;
             } catch (e) {
-                console.log('Score logged locally (Backend sync pending setup)');
+                console.error('Score Submission Error:', e);
             }
         }
 
@@ -1015,12 +1024,23 @@
 
         function onPlayClicked() {
             initAudio();
-            const nick = nicknameInput.value.trim();
+            const nick = nicknameInput.value.trim().toUpperCase();
+            
             if(!nick) {
                 nicknameInput.style.borderColor = '#ff0000';
                 setTimeout(() => nicknameInput.style.borderColor = '#0f0', 500);
                 return;
             }
+
+            // Admin password verification for "BANANA"
+            if (nick === 'BANANA') {
+                const pass = prompt('Enter Admin Password:');
+                if (pass !== '123456') {
+                    alert('ACCESS DENIED: Incorrect Admin Password.');
+                    return;
+                }
+            }
+
             startScreen.classList.add('hidden');
             if (!playerData.hasSeenTut) {
                 tutorialScreen.classList.remove('hidden');
