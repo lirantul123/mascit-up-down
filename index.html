@@ -1102,14 +1102,7 @@
         async function onPlayClicked() {
             initAudio();
             const nick = nicknameInput.value.trim().toUpperCase();
-            
-            if(!nick) {
-                nicknameInput.style.borderColor = '#ff0000';
-                setTimeout(() => nicknameInput.style.borderColor = '#0f0', 500);
-                return;
-            }
 
-            // Admin verification for "LIRAN"
             if (nick === 'LIRAN') {
                 const pass = prompt('Enter Admin Password:');
                 if (pass === '123456') {
@@ -1123,7 +1116,12 @@
                 isAdmin = false;
             }
 
-            // --- CHECK IF NICKNAME ALREADY EXISTS IN DB ---
+            if(!nick ) {
+                nicknameInput.style.borderColor = '#ff0000';
+                setTimeout(() => nicknameInput.style.borderColor = '#0f0', 500);
+                return;
+            }
+
             try {
                 const { data, error } = await db
                     .from('leaderboard')
