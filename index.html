@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Matrix Defense: Tactical Slow-Mo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+        }
+        canvas { display: block; }
+        
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+        .hud-element {
+            color: #0f0;
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 0 8px #0f0;
+        }
+        #top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+        }
+        
+        #high-score-center {
+            text-align: center;
+            color: #ffd700;
+            font-size: 18px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-shadow: 0 0 12px #ffd700;
+        }
+
+        #bullet-meter-container {
+            width: 140px;
+            height: 14px;
+            border: 2px solid #0f0;
+            background: rgba(0, 20, 0, 0.6);
+            margin-top: 6px;
+            box-shadow: 0 0 8px #0f0;
+        }
+        #bullet-meter {
+            width: 100%;
+            height: 100%;
+            background: #0f0;
+            transition: width 0.1s linear;
+        }
+        #start-screen, #game-over-screen, #tutorial-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.88);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        .title {
+            color: #fff;
+            font-size: 28px;
+            text-shadow: 0 0 15px #0f0, 0 0 30px #0f0;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+        .subtitle {
+            color: #0f0;
+            font-size: 14px;
+            margin-bottom: 15px;
+            text-align: center;
+            max-width: 85%;
+            line-height: 1.6;
+        }
+        
+        .hero-score-badge {
+            color: #fff;
+            font-size: 42px;
+            font-weight: 900;
+            margin: 10px 0;
+            text-shadow: 0 0 20px #0f0, 0 0 40px #0f0;
+            text-align: center;
+            letter-spacing: 3px;
+        }
+
+        .secondary-score-badge {
+            color: #ffd700;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 0 0 8px #ffd700;
+            text-align: center;
+            letter-spacing: 1.5px;
+            opacity: 0.9;
+        }
+
+        .stats-badge {
+            color: #aaa;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+        .btn {
+            background: transparent;
+            border: 2px solid #0f0;
+            color: #0f0;
+            padding: 12px 28px;
+            font-size: 18px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 10px #0f0;
+            text-shadow: 0 0 5px #0f0;
+        }
+        .btn:active {
+            background: #0f0;
+            color: #000;
+        }
+        .hidden { display: none !important; }
+        
+        #combo-display {
+            position: absolute;
+            top: 85px;
+            left: 20px;
+            color: #ff0;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #ff0;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-overlay">
+        <div id="top-bar">
+            <div>
+                <div class="hud-element" id="score-display">SCORE: 0</div>
+                <div class="hud-element" id="level-display" style="color: #fff;">LEVEL: 1</div>
+            </div>
+            
+            <div id="high-score-center">
+                <div style="font-size: 10px; opacity: 0.8; color: #fff;">BEST RECORD</div>
+                <div id="hud-high-score">0</div>
+            </div>
+
+            <div>
+                <div class="hud-element" style="text-align: right;">BULLET TIME</div>
+                <div id="bullet-meter-container">
+                    <div id="bullet-meter"></div>
+                </div>
+            </div>
+        </div>
+        <div id="combo-display">COMBO x2!</div>
+        <div class="hud-element" style="text-align: center; font-size: 12px; opacity: 0.7;">
+            TAP GLITCHES • HOLD FOR TACTICAL SLOW-MO
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <div class="title">MATRIX DEFENSE</div>
+        <div class="subtitle">Purge corruptions before they breach the firewall.</div>
+        <div class="secondary-score-badge" id="start-high-score">HIGH SCORE: 0</div>
+        <div class="stats-badge" id="start-max-level">HIGHEST LEVEL REACHED: 1</div>
+        <button class="btn" id="start-btn">PLAY</button>
+    </div>
+
+    <div id="tutorial-screen" class="hidden">
+        <div class="title" style="font-size: 24px;">SYSTEM TRAINING</div>
+        <div class="subtitle" id="tut-text">
+            Step 1: <b>TAP</b> glitches to destroy them.<br>
+            <span style="color:#00ffff;">Blue = Ice Freeze</span> | <span style="color:#ffd700;">Gold = Energy</span> | <span style="color:#a020f0;">Purple = Splitter</span>
+        </div>
+        <button class="btn" id="tut-btn">NEXT</button>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <div class="title" style="color: #f00; text-shadow: 0 0 15px #f00;">SYSTEM FAILURE</div>
+        <div class="subtitle" style="color: #aaa; font-size: 12px; margin-bottom: 0;">FINAL SCORE</div>
+        <div class="hero-score-badge" id="final-score">0</div>
+        <div class="secondary-score-badge" id="end-high-score">HIGH SCORE: 0</div>
+        <div class="stats-badge" id="end-stats"></div>
+        <button class="btn" id="restart-btn" style="border-color: #f00; color: #f00; box-shadow: 0 0 10px #f00;">REBOOT</button>
+    </div>
+
+    <canvas id="matrix"></canvas>
+
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+
+        // UI Handles
+        const scoreEl = document.getElementById('score-display');
+        const levelEl = document.getElementById('level-display');
+        const meterEl = document.getElementById('bullet-meter');
+        const comboEl = document.getElementById('combo-display');
+        const hudHighScoreEl = document.getElementById('hud-high-score');
+        const startHighScoreEl = document.getElementById('start-high-score');
+        const startMaxLevelEl = document.getElementById('start-max-level');
+        const endHighScoreEl = document.getElementById('end-high-score');
+        const finalScoreEl = document.getElementById('final-score');
+        
+        const startScreen = document.getElementById('start-screen');
+        const tutorialScreen = document.getElementById('tutorial-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const tutText = document.getElementById('tut-text');
+        const tutBtn = document.getElementById('tut-btn');
+
+        // English, Numbers, Symbols & Greek Letters
+        const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+-/<>~ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω';
+        
+        // Increased font size and spacing to reduce visual clutter
+        const fontSize = 20; 
+        let columns = 0;
+        let drops = [];
+
+        // Audio System
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            if (type === 'zap') {
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'freeze') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.linearRampToValueAtTime(1300, now + 0.12);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
+                osc.start(now);
+                osc.stop(now + 0.12);
+            } else if (type === 'over') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(40, now + 0.4);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+        }
+
+        function triggerVibrate(ms) {
+            if (navigator.vibrate) navigator.vibrate(ms);
+        }
+
+        // Persistence
+        let highData = { maxLevel: 1, highScore: 0, hasSeenTut: false };
+        function loadSavedProgress() {
+            const saved = localStorage.getItem('matrix_runner_v7');
+            if (saved) {
+                try { highData = { ...highData, ...JSON.parse(saved) }; } catch(e){}
+            }
+            updateHighScoreDisplays();
+        }
+
+        function updateHighScoreDisplays() {
+            hudHighScoreEl.innerText = highData.highScore;
+            startHighScoreEl.innerText = `HIGH SCORE: ${highData.highScore}`;
+            startMaxLevelEl.innerText = `HIGHEST LEVEL REACHED: ${highData.maxLevel}`;
+            endHighScoreEl.innerText = `HIGH SCORE: ${highData.highScore}`;
+        }
+
+        function saveProgress() {
+            if (level > highData.maxLevel) highData.maxLevel = level;
+            if (score > highData.highScore) highData.highScore = score;
+            localStorage.setItem('matrix_runner_v7', JSON.stringify(highData));
+            updateHighScoreDisplays();
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            columns = Math.floor(canvas.width / fontSize);
+            drops = Array(columns).fill(0).map(() => Math.floor(Math.random() * (canvas.height / fontSize)));
+        }
+        resizeCanvas();
+
+        // Game State Variables
+        let isPlaying = false;
+        let score = 0;
+        let level = 1;
+        let combo = 1;
+        let glitchesCleared = 0;
+        let bulletTimeEnergy = 100;
+        let isBulletTime = false;
+        let freezeTimer = 0;
+        
+        let isPressing = false;
+        let pressTimer = null;
+        let touchPos = { x: 0, y: 0 };
+        let shockwaveRadius = 0;
+
+        let glitches = [];
+        let particles = [];
+        let spawnTimer = 0;
+        let tutStep = 1;
+
+        class Particle {
+            constructor(x, y, char, color) {
+                this.x = x;
+                this.y = y;
+                this.char = char;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10 - 2;
+                this.alpha = 1;
+                this.size = fontSize * (Math.random() * 0.5 + 1.1);
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.03;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = this.color;
+                ctx.font = this.size + 'px monospace';
+                ctx.fillText(this.char, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        class GlitchTarget {
+            constructor(xOverride, yOverride, typeOverride, vxOverride) {
+                this.col = Math.floor(Math.random() * columns);
+                this.x = xOverride !== undefined ? xOverride : this.col * fontSize;
+                this.y = yOverride !== undefined ? yOverride : -20;
+                this.vx = vxOverride || 0;
+                this.baseSpeed = 1.0 + (level * 0.22);
+                this.char = chars.charAt(Math.floor(Math.random() * chars.length));
+
+                const rand = Math.random();
+                if (typeOverride) {
+                    this.type = typeOverride;
+                } else if (rand > 0.91) {
+                    this.type = 'gold';
+                } else if (rand > 0.82 && level >= 8) {
+                    this.type = 'blue';
+                } else if (rand > 0.70) {
+                    this.type = 'purple';
+                } else {
+                    this.type = 'red';
+                }
+
+                this.colorMap = {
+                    red: '#f00',
+                    blue: '#00ffff',
+                    gold: '#ffd700',
+                    purple: '#a020f0'
+                };
+            }
+
+            update(speedMult) {
+                if (freezeTimer > 0) return;
+                this.y += this.baseSpeed * speedMult;
+                this.x += this.vx * speedMult;
+
+                if (this.x <= 10) {
+                    this.x = 10;
+                    this.vx = Math.abs(this.vx);
+                } else if (this.x >= canvas.width - 25) {
+                    this.x = canvas.width - 25;
+                    this.vx = -Math.abs(this.vx);
+                }
+
+                if (Math.random() > 0.85) {
+                    this.char = chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                const color = isBulletTime ? '#00ffff' : this.colorMap[this.type];
+                
+                // Solid black backdrop circle to completely isolate interactive targets from background noise
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(this.x + 8, this.y - 8, 20, 0, Math.PI * 2);
+                ctx.fill();
+
+                // High-visibility target symbol
+                ctx.fillStyle = color;
+                ctx.shadowBlur = isBulletTime ? 20 : 14;
+                ctx.shadowColor = color;
+                ctx.font = 'bold ' + (fontSize + 8) + 'px monospace';
+                ctx.fillText(this.char, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        function triggerExplosion(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                const char = chars.charAt(Math.floor(Math.random() * chars.length));
+                particles.push(new Particle(x, y, char, color));
+            }
+        }
+
+        function spawnGlitches() {
+            spawnTimer++;
+            const spawnInterval = Math.max(18, 65 - (level * 5));
+            if (spawnTimer > (isBulletTime ? spawnInterval * 2.5 : spawnInterval)) {
+                glitches.push(new GlitchTarget());
+                spawnTimer = 0;
+            }
+        }
+
+        function gameLoop() {
+            // Faster fade rate (0.28 opacity) eliminates lingering visual motion trails
+            ctx.fillStyle = isBulletTime ? 'rgba(0, 15, 10, 0.3)' : 'rgba(0, 0, 0, 0.28)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (freezeTimer > 0) freezeTimer--;
+
+            if (isPlaying) {
+                if (isBulletTime) {
+                    bulletTimeEnergy = Math.max(0, bulletTimeEnergy - 0.7);
+                    if (bulletTimeEnergy === 0) deactivateBulletTime();
+                } else {
+                    bulletTimeEnergy = Math.min(100, bulletTimeEnergy + 0.15);
+                }
+                meterEl.style.width = bulletTimeEnergy + '%';
+                meterEl.style.background = isBulletTime ? '#00ffff' : '#0f0';
+            }
+
+            ctx.font = fontSize + 'px monospace';
+            const speedMult = freezeTimer > 0 ? 0 : (isBulletTime ? 0.15 : 1.0);
+
+            // Slower background rain speed
+            const bgSpeedMult = speedMult * 0.15;
+
+            for (let i = 0; i < drops.length; i++) {
+                const char = chars.charAt(Math.floor(Math.random() * chars.length));
+                const x = i * fontSize;
+                const y = drops[i] * fontSize;
+
+                // Soft, low-contrast background color (rgba opacity 0.28) prevents eye strain
+                ctx.fillStyle = isBulletTime ? 'rgba(0, 80, 80, 0.3)' : 'rgba(0, 160, 40, 0.28)';
+                ctx.fillText(char, x, y);
+
+                drops[i] += bgSpeedMult;
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+                    drops[i] = 0;
+                }
+            }
+
+            if (isPlaying) {
+                spawnGlitches();
+
+                for (let i = glitches.length - 1; i >= 0; i--) {
+                    const g = glitches[i];
+                    g.update(speedMult);
+                    g.draw(ctx);
+
+                    if (g.y > canvas.height + 20) {
+                        endGame();
+                        break;
+                    }
+                }
+
+                if (isBulletTime) {
+                    shockwaveRadius = (shockwaveRadius + 8) % 180;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(touchPos.x, touchPos.y, shockwaveRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(0, 255, 255, ${1 - shockwaveRadius / 180})`;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw(ctx);
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handlePointerDown(e) {
+            if (!isPlaying) return;
+            initAudio();
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            touchPos = { x: clientX, y: clientY };
+
+            let hit = false;
+            for (let i = glitches.length - 1; i >= 0; i--) {
+                const g = glitches[i];
+                const dist = Math.hypot(g.x - clientX, g.y - clientY);
+
+                if (dist < 45) {
+                    hit = true;
+                    triggerExplosion(g.x, g.y, g.colorMap[g.type]);
+                    triggerVibrate(20);
+
+                    if (g.type === 'blue') {
+                        freezeTimer = 60;
+                        playSound('freeze');
+                    } else if (g.type === 'gold') {
+                        bulletTimeEnergy = Math.min(100, bulletTimeEnergy + 40);
+                        playSound('zap');
+                    } else if (g.type === 'purple') {
+                        playSound('zap');
+                        glitches.push(new GlitchTarget(g.x - 15, g.y - 10, 'red', -2.0));
+                        glitches.push(new GlitchTarget(g.x + 15, g.y - 10, 'red', 2.0));
+                    } else {
+                        playSound('zap');
+                    }
+
+                    glitches.splice(i, 1);
+
+                    score += 10 * combo * (isBulletTime ? 2 : 1);
+                    combo++;
+                    glitchesCleared++;
+
+                    if (score > highData.highScore) {
+                        highData.highScore = score;
+                        hudHighScoreEl.innerText = score;
+                    }
+
+                    if (combo > 2) {
+                        comboEl.innerText = `COMBO x${combo}!`;
+                        comboEl.style.opacity = '1';
+                        setTimeout(() => { comboEl.style.opacity = '0'; }, 800);
+                    }
+
+                    scoreEl.innerText = `SCORE: ${score}`;
+                    
+                    if (glitchesCleared >= level * 6) {
+                        level++;
+                        glitchesCleared = 0;
+                        levelEl.innerText = `LEVEL: ${level}`;
+                        saveProgress();
+                    }
+                    break;
+                }
+            }
+
+            if (!hit) {
+                combo = 1;
+                isPressing = true;
+                pressTimer = setTimeout(() => {
+                    if (isPressing && bulletTimeEnergy > 15) {
+                        activateBulletTime();
+                    }
+                }, 160);
+            }
+        }
+
+        function handlePointerUp() {
+            isPressing = false;
+            clearTimeout(pressTimer);
+            if (isBulletTime) deactivateBulletTime();
+        }
+
+        function activateBulletTime() {
+            isBulletTime = true;
+            shockwaveRadius = 0;
+            triggerVibrate([30, 30]);
+        }
+
+        function deactivateBulletTime() {
+            isBulletTime = false;
+        }
+
+        function advanceTutorial() {
+            tutStep++;
+            if (tutStep === 2) {
+                tutText.innerHTML = "Step 2: <b>HOLD SCREEN</b> to trigger Tactical Slow-Mo when overwhelmed.";
+            } else {
+                highData.hasSeenTut = true;
+                saveProgress();
+                tutorialScreen.classList.add('hidden');
+                beginActualGame();
+            }
+        }
+
+        function onPlayClicked() {
+            initAudio();
+            startScreen.classList.add('hidden');
+            if (!highData.hasSeenTut) {
+                tutStep = 1;
+                tutorialScreen.classList.remove('hidden');
+            } else {
+                beginActualGame();
+            }
+        }
+
+        function beginActualGame() {
+            score = 0;
+            level = 1;
+            combo = 1;
+            glitchesCleared = 0;
+            bulletTimeEnergy = 100;
+            freezeTimer = 0;
+            glitches = [];
+            particles = [];
+            
+            scoreEl.innerText = 'SCORE: 0';
+            levelEl.innerText = 'LEVEL: 1';
+            hudHighScoreEl.innerText = highData.highScore;
+            gameOverScreen.classList.add('hidden');
+            isPlaying = true;
+        }
+
+        function endGame() {
+            isPlaying = false;
+            deactivateBulletTime();
+            playSound('over');
+            triggerVibrate([100, 50, 100]);
+            saveProgress();
+
+            document.getElementById('end-stats').innerText = `REACHED LEVEL ${level}`;
+            finalScoreEl.innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // Event Listeners
+        window.addEventListener('mousedown', handlePointerDown);
+        window.addEventListener('mouseup', handlePointerUp);
+        window.addEventListener('touchstart', (e) => { handlePointerDown(e); e.preventDefault(); }, { passive: false });
+        window.addEventListener('touchend', handlePointerUp);
+
+        document.getElementById('start-btn').addEventListener('click', onPlayClicked);
+        document.getElementById('restart-btn').addEventListener('click', beginActualGame);
+        tutBtn.addEventListener('click', advanceTutorial);
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Init Game
+        loadSavedProgress();
+        gameLoop();
+    </script>
+</body>
+</html>
