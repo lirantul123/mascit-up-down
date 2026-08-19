@@ -194,13 +194,30 @@
             background: #00ffff;
             color: #000;
         }
+        .btn-danger {
+            border-color: #ff0000;
+            color: #ff0000;
+            box-shadow: 0 0 8px #ff0000;
+            font-size: 11px;
+            padding: 4px 8px;
+        }
+        .btn-danger:hover {
+            background: #ff0000;
+            color: #fff;
+        }
 
         .hidden { display: none !important; }
         
-        #lb-list {
+        #lb-container {
+            max-height: 50vh;
+            overflow-y: auto;
             width: 90%;
-            max-width: 420px;
+            max-width: 460px;
             margin-bottom: 20px;
+        }
+
+        #lb-list {
+            width: 100%;
             border-collapse: collapse;
         }
         #lb-list tr {
@@ -213,14 +230,17 @@
             text-align: center;
             letter-spacing: 1px;
             text-shadow: 0 0 8px #ffd700;
+            position: sticky;
+            top: 0;
+            background: rgba(0,0,0,0.95);
         }
         #lb-list td {
             color: #0f0;
-            font-size: 14px;
-            padding: 10px 6px;
+            font-size: 13px;
+            padding: 8px 4px;
             text-align: center;
             text-shadow: 0 0 5px #0f0;
-            max-width: 120px;
+            max-width: 110px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -290,19 +310,22 @@
     <!-- Leaderboard Screen -->
     <div id="leaderboard-screen" class="hidden">
         <div class="title" style="color: #ffd700; text-shadow: 0 0 15px #ffd700;">GLOBAL TOP OPERATIVES</div>
-        <table id="lb-list">
-            <thead>
-                <tr>
-                    <th>RANK</th>
-                    <th>OPERATOR</th>
-                    <th>SCORE</th>
-                    <th>LVL</th>
-                </tr>
-            </thead>
-            <tbody id="lb-table-body">
-                <tr><td colspan="4" style="color: #666; padding: 20px;">CONNECTING TO GRID...</td></tr>
-            </tbody>
-        </table>
+        <div id="lb-container">
+            <table id="lb-list">
+                <thead>
+                    <tr>
+                        <th>RANK</th>
+                        <th>OPERATOR</th>
+                        <th>SCORE</th>
+                        <th>LVL</th>
+                        <th id="admin-th" class="hidden">ACTION</th>
+                    </tr>
+                </thead>
+                <tbody id="lb-table-body">
+                    <tr><td colspan="5" style="color: #666; padding: 20px;">CONNECTING TO GRID...</td></tr>
+                </tbody>
+            </table>
+        </div>
         <button class="btn btn-secondary" id="close-lb-btn">BACK</button>
     </div>
 
@@ -340,8 +363,7 @@
         // --- SUPABASE CONFIGURATION ---
         const SUPABASE_URL = 'https://rynimptqihkeqfmxrbrd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5bmltcHRxaWhrZXFmbXhyYnJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNTgyNzIsImV4cCI6MjEwMjczNDI3Mn0.IphWTzGDw_JARYD06YFqG5jyDh5Xf5fggtZ9330ItpI';
-
-        // Safe database client instance initializer preventing declaration collisions
+        
         if (!window.activeDbClient && window.supabase && typeof window.supabase.createClient === 'function') {
             window.activeDbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
@@ -349,14 +371,14 @@
         const db = window.activeDbClient || {
             from: () => ({
                 select: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } }) }) }),
-                insert: () => Promise.resolve({ error: { message: "Not connected" } })
+                upsert: () => Promise.resolve({ error: { message: "Not connected" } }),
+                delete: () => ({ eq: () => Promise.resolve({ error: { message: "Not connected" } }) })
             })
         };
 
         const canvas = document.getElementById('matrix');
         const ctx = canvas.getContext('2d');
 
-        // UI Handles
         const scoreEl = document.getElementById('score-display');
         const levelEl = document.getElementById('level-display');
         const meterEl = document.getElementById('bullet-meter');
@@ -378,13 +400,16 @@
         
         const tutBtn = document.getElementById('tut-btn');
         const lbTableBody = document.getElementById('lb-table-body');
+        const adminTh = document.getElementById('admin-th');
 
         const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+-/<>~ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω';
         const fontSize = 20; 
         let columns = 0;
         let drops = [];
 
-        // Audio System
+        // Admin Session Tracker
+        let isAdmin = false;
+
         let audioCtx = null;
         function initAudio() {
             if (!audioCtx) {
@@ -458,8 +483,7 @@
             if (navigator.vibrate) navigator.vibrate(ms);
         }
 
-        // Profile & Global Backend Leaderboard Connection
-        let playerData = { nickname: '', highScore: 0, hasSeenTut: false };
+        let playerData = { playerToken: '', nickname: '', highScore: 0, hasSeenTut: false };
         
         function loadSavedProfile() {
             const saved = localStorage.getItem('matrix_runner_profile');
@@ -472,6 +496,13 @@
                     }
                 } catch(e){}
             }
+
+            // Generate a unique secret token for this browser if it doesn't have one yet
+            if (!playerData.playerToken) {
+                playerData.playerToken = 'tok_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+                localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
+            }
+
             updateHighScoreDisplay();
         }
 
@@ -483,19 +514,25 @@
 
         // --- BACKEND API LAYER (SUPABASE) ---
         async function fetchGlobalLeaderboard() {
-            lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #0f0; padding: 20px;">FETCHING GRID SCORES...</td></tr>`;
+            lbTableBody.innerHTML = `<tr><td colspan="5" style="color: #0f0; padding: 20px;">FETCHING GRID SCORES...</td></tr>`;
+            if (isAdmin) {
+                adminTh.classList.remove('hidden');
+            } else {
+                adminTh.classList.add('hidden');
+            }
+
             try {
                 const { data, error } = await db
                     .from('leaderboard')
-                    .select('nickname, score, level')
+                    .select('player_token, nickname, score, level')
                     .order('score', { ascending: false })
-                    .limit(10);
+                    .limit(20);
 
                 if (error) throw error;
                 renderLeaderboardTable(data);
             } catch (err) {
                 console.error('Leaderboard Fetch Error:', err);
-                lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #f00; padding: 20px;">FAILED TO CONNECT TO GRID</td></tr>`;
+                lbTableBody.innerHTML = `<tr><td colspan="5" style="color: #f00; padding: 20px;">FAILED TO CONNECT TO GRID</td></tr>`;
             }
         }
 
@@ -510,33 +547,67 @@
             localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
             updateHighScoreDisplay();
 
+            // Secure upsert using unique player_token to prevent score hijacking/overriding by duplicate names
             try {
                 const { error } = await db
                     .from('leaderboard')
-                    .insert([{ nickname, score, level }]);
+                    .upsert([{ 
+                        player_token: playerData.playerToken, 
+                        nickname: nickname, 
+                        score: score, 
+                        level: level 
+                    }], { onConflict: ['player_token'] });
+
+                if (error) {
+                    console.error('Score Submission Error (Non-Fatal):', error.message);
+                }
+            } catch (e) {
+                console.error('Score Submission Exception:', e);
+            }
+        }
+
+        async function deleteOperator(tokenOrName) {
+            if (!isAdmin) return;
+            if (!confirm(`Purge operative from the system grid?`)) return;
+
+            try {
+                // Delete by unique player_token if available, fallback to nickname
+                const { error } = await db
+                    .from('leaderboard')
+                    .delete()
+                    .eq('player_token', tokenOrName);
 
                 if (error) throw error;
-            } catch (e) {
-                console.error('Score Submission Error:', e);
+                fetchGlobalLeaderboard(); 
+            } catch (err) {
+                alert('Failed to remove operative.');
+                console.error(err);
             }
         }
 
         function renderLeaderboardTable(scores) {
             lbTableBody.innerHTML = '';
             if (!Array.isArray(scores) || scores.length === 0) {
-                lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #666; padding: 20px;">NO RECORDS FOUND</td></tr>`;
+                lbTableBody.innerHTML = `<tr><td colspan="5" style="color: #666; padding: 20px;">NO RECORDS FOUND</td></tr>`;
                 return;
             }
 
             scores.forEach((entry, index) => {
                 const rankEmojis = ['👑', '🥈', '🥉', '4️⃣', '5️⃣'];
                 const row = document.createElement('tr');
-                row.innerHTML = `
+                
+                let html = `
                     <td>${rankEmojis[index] || (index + 1)}</td>
                     <td>${entry.nickname || 'ANONYMOUS'}</td>
                     <td>${entry.score}</td>
                     <td>LVL ${entry.level}</td>
                 `;
+
+                if (isAdmin) {
+                    html += `<td><button class="btn btn-danger" onclick="deleteOperator('${entry.player_token}')">PURGE</button></td>`;
+                }
+                
+                row.innerHTML = html;
                 lbTableBody.appendChild(row);
             });
         }
@@ -549,7 +620,6 @@
         }
         resizeCanvas();
 
-        // Game State Variables
         let isPlaying = false;
         let score = 0;
         let level = 1;
@@ -1039,13 +1109,18 @@
                 return;
             }
 
-            // Admin password verification for "BANANA"
-            if (nick === 'BANANA') {
+            // Admin verification for "LIRAN"
+            if (nick === 'LIRAN') {
                 const pass = prompt('Enter Admin Password:');
-                if (pass !== '123456') {
+                if (pass === '123456') {
+                    isAdmin = true;
+                } else {
                     alert('ACCESS DENIED: Incorrect Admin Password.');
+                    isAdmin = false;
                     return;
                 }
+            } else {
+                isAdmin = false;
             }
 
             startScreen.classList.add('hidden');
@@ -1094,12 +1169,12 @@
             playSound('over');
             triggerVibrate([100, 50, 100]);
             
-            // Push score to global backend leaderboard
-            submitScoreToBackend(score, level);
-
             document.getElementById('end-stats').innerText = `REACHED LEVEL ${level}`;
             finalScoreEl.innerText = score;
             gameOverScreen.classList.remove('hidden');
+
+            // Submit score securely in the background using player_token
+            submitScoreToBackend(score, level);
         }
 
         // Event Listeners
