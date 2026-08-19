@@ -1102,7 +1102,14 @@
         async function onPlayClicked() {
             initAudio();
             const nick = nicknameInput.value.trim().toUpperCase();
+            
+            if(!nick) {
+                nicknameInput.style.borderColor = '#ff0000';
+                setTimeout(() => nicknameInput.style.borderColor = '#0f0', 500);
+                return;
+            }
 
+            // Admin verification for "LIRAN" (case-insensitive check)
             if (nick === 'LIRAN') {
                 const pass = prompt('Enter Admin Password:');
                 if (pass === '123456') {
@@ -1114,41 +1121,35 @@
                 }
             } else {
                 isAdmin = false;
-            }
 
-            if(!nick ) {
-                nicknameInput.style.borderColor = '#ff0000';
-                setTimeout(() => nicknameInput.style.borderColor = '#0f0', 500);
-                return;
-            }
+                // --- CHECK IF NICKNAME ALREADY EXISTS IN DB (Skipped for Liran) ---
+                try {
+                    const { data, error } = await db
+                        .from('leaderboard')
+                        .select('player_token, score')
+                        .eq('nickname', nick)
+                        .maybeSingle();
 
-            try {
-                const { data, error } = await db
-                    .from('leaderboard')
-                    .select('player_token, score')
-                    .eq('nickname', nick)
-                    .maybeSingle();
+                    if (error) throw error;
 
-                if (error) throw error;
-
-                if (data) {
-                    // The nickname exists in the database. 
-                    // Check if it belongs to THIS device's stored token:
-                    if (data.player_token !== playerData.playerToken) {
-                        alert(`The operator name "${nick}" is already registered by another user! Please choose a different nickname.`);
-                        nicknameInput.style.borderColor = '#ff0000';
-                        setTimeout(() => nicknameInput.style.borderColor = '#0f0', 800);
-                        return; // Stop them from proceeding
-                    } else {
-                        // It belongs to them! Sync their personal best if needed
-                        if (data.score > playerData.highScore) {
-                            playerData.highScore = data.score;
-                            updateHighScoreDisplay();
+                    if (data) {
+                        // If the nickname exists and belongs to a different device/token, block it
+                        if (data.player_token !== playerData.playerToken) {
+                            alert(`The operator name "${nick}" is already registered by another user! Please choose a different nickname.`);
+                            nicknameInput.style.borderColor = '#ff0000';
+                            setTimeout(() => nicknameInput.style.borderColor = '#0f0', 800);
+                            return; 
+                        } else {
+                            // Belongs to this device, sync personal best if needed
+                            if (data.score > playerData.highScore) {
+                                playerData.highScore = data.score;
+                                updateHighScoreDisplay();
+                            }
                         }
                     }
+                } catch (err) {
+                    console.error('Nickname availability check error:', err);
                 }
-            } catch (err) {
-                console.error('Nickname availability check error:', err);
             }
 
             // Proceed to tutorial or game
