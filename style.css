@@ -82,7 +82,7 @@ canvas { display: block; }
     width: 34px;
     height: 34px;
     font-size: 14px;
-    margin-bottom: 30px;
+    margin-top: 6px;
 }
 .pause-icon {
     display: inline-block;
@@ -239,6 +239,19 @@ canvas { display: block; }
     display: flex;
     align-items: center;
     justify-content: center;
+}
+.btn-mute {
+    margin-top: 18px;
+    padding: 6px 14px;
+    font-size: 12px;
+    border-color: #aaa;
+    color: #aaa;
+    box-shadow: 0 0 6px #aaa;
+    text-shadow: 0 0 4px #aaa;
+}
+.btn-mute:active, .btn-mute:hover {
+    background: #aaa;
+    color: #000;
 }
 .btn-danger {
     border-color: #ff0000;
