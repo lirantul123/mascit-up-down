@@ -9,14 +9,16 @@
 </head>
 <body>
 
-    <button id="mute-btn" class="btn btn-secondary" title="Toggle Sound">🔊</button>
+    <button id="mute-btn" class="btn btn-secondary icon-btn" title="Toggle Sound">🔊</button>
 
     <div id="ui-overlay">
         <div id="top-bar">
-            <div>
-                <div class="hud-element" id="score-display">SCORE: 0</div>
-                <div class="hud-element" id="level-display" style="color: #fff;">LEVEL: 1</div>
-                <button id="pause-btn" class="btn btn-secondary" title="Pause">⏸</button>
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div>
+                    <div class="hud-element" id="score-display">SCORE: 0</div>
+                    <div class="hud-element" id="level-display" style="color: #fff;">LEVEL: 1</div>
+                </div>
+                <button id="pause-btn" class="btn btn-secondary icon-btn" title="Pause">⏸</button>
             </div>
 
             <div id="high-score-center">
