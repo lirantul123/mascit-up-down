@@ -384,6 +384,9 @@
         const hudHighScoreEl = document.getElementById('hud-high-score');
         const hudNameDisplay = document.getElementById('hud-name-display');
         const nicknameInput = document.getElementById('nickname-input');
+        nicknameInput.addEventListener('input', () => {
+            nicknameInput.value = nicknameInput.value.replace(/[^a-zA-Z0-9 _-]/g, '');
+        });
         const startHighScoreEl = document.getElementById('start-high-score');
         const endHighScoreEl = document.getElementById('end-high-score');
         const finalScoreEl = document.getElementById('final-score');
@@ -584,6 +587,12 @@
             }
         }
 
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         function renderLeaderboardTable(scores) {
             lbTableBody.innerHTML = '';
             if (!Array.isArray(scores) || scores.length === 0) {
@@ -594,22 +603,30 @@
             scores.forEach((entry, index) => {
                 const rankEmojis = ['👑', '🥈', '🥉', '4️⃣', '5️⃣'];
                 const row = document.createElement('tr');
-                
+                const safeNickname = escapeHtml(entry.nickname || 'ANONYMOUS');
+
                 let html = `
                     <td>${rankEmojis[index] || (index + 1)}</td>
-                    <td>${entry.nickname || 'ANONYMOUS'}</td>
-                    <td>${entry.score}</td>
-                    <td>LVL ${entry.level || 1}</td>
+                    <td>${safeNickname}</td>
+                    <td>${Number(entry.score) || 0}</td>
+                    <td>LVL ${Number(entry.level) || 1}</td>
                 `;
 
                 if (isAdmin) {
-                    html += `<td><button class="btn btn-danger" onclick="deleteOperator('${entry.player_token}')">PURGE</button></td>`;
+                    html += `<td><button class="btn btn-danger" data-token="${escapeHtml(entry.player_token)}">PURGE</button></td>`;
                 }
-                
+
                 row.innerHTML = html;
                 lbTableBody.appendChild(row);
             });
         }
+
+        lbTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-danger');
+            if (!btn) return;
+            const token = btn.dataset.token;
+            if (token) deleteOperator(token);
+        });
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -1114,10 +1131,21 @@
             isBulletTime = false;
         }
 
+        let isSubmittingPlay = false;
         async function onPlayClicked() {
+            if (isSubmittingPlay) return;
+            isSubmittingPlay = true;
+            try {
+                await onPlayClickedInner();
+            } finally {
+                isSubmittingPlay = false;
+            }
+        }
+
+        async function onPlayClickedInner() {
             initAudio();
             const nick = nicknameInput.value.trim().toUpperCase();
-            
+
             if(!nick) {
                 nicknameInput.style.borderColor = '#ff0000';
                 setTimeout(() => nicknameInput.style.borderColor = '#0f0', 500);
