@@ -260,6 +260,38 @@
             opacity: 0;
             transition: opacity 0.2s;
         }
+
+        #chat-container {
+            width: 90%;
+            max-width: 460px;
+            height: 45vh;
+            border: 2px solid #00ffff;
+            background: rgba(0, 20, 20, 0.6);
+            box-shadow: 0 0 8px #00ffff;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            padding: 10px;
+        }
+        .chat-msg {
+            font-size: 13px;
+            color: #0f0;
+            text-align: left;
+            margin-bottom: 8px;
+            word-break: break-word;
+            line-height: 1.4;
+        }
+        .chat-msg .chat-nick {
+            color: #00ffff;
+            font-weight: bold;
+        }
+        #chat-input-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+        #chat-input-row .input-field {
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
@@ -302,6 +334,7 @@
         <div class="button-group">
             <button class="btn" id="start-btn">PLAY</button>
             <button class="btn btn-secondary" id="open-lb-btn">LEADERBOARD</button>
+            <button class="btn btn-secondary" id="open-chat-btn">CHAT</button>
         </div>
     </div>
 
@@ -315,16 +348,28 @@
                         <th>RANK</th>
                         <th>OPERATOR</th>
                         <th>SCORE</th>
-                        <th>LVL</th>
                         <th id="admin-th" class="hidden">ACTION</th>
                     </tr>
                 </thead>
                 <tbody id="lb-table-body">
-                    <tr><td colspan="5" style="color: #666; padding: 20px;">CONNECTING TO GRID...</td></tr>
+                    <tr><td colspan="4" style="color: #666; padding: 20px;">CONNECTING TO GRID...</td></tr>
                 </tbody>
             </table>
         </div>
         <button class="btn btn-secondary" id="close-lb-btn">BACK</button>
+    </div>
+
+    <!-- Chat Screen -->
+    <div id="chat-screen" class="hidden">
+        <div class="title" style="color: #00ffff; text-shadow: 0 0 15px #00ffff; font-size: 22px;">GRID CHAT</div>
+        <div id="chat-container">
+            <div id="chat-messages"></div>
+        </div>
+        <div id="chat-input-row">
+            <input type="text" id="chat-input" class="input-field" placeholder="TYPE MESSAGE..." maxlength="200" style="width: 200px;">
+            <button class="btn btn-secondary" id="chat-send-btn" style="padding: 10px 20px; font-size:14px;">SEND</button>
+        </div>
+        <button class="btn btn-secondary" id="close-chat-btn" style="margin-top:15px;">BACK</button>
     </div>
 
     <!-- Tutorial Screen -->
@@ -352,6 +397,7 @@
         <div class="button-group">
             <button class="btn" id="restart-btn" style="border-color: #f00; color: #f00; box-shadow: 0 0 10px #f00;">REBOOT</button>
             <button class="btn btn-secondary" id="end-lb-btn">GLOBAL LEADERBOARD</button>
+            <button class="btn btn-secondary" id="end-chat-btn">CHAT</button>
         </div>
     </div>
 
@@ -368,8 +414,12 @@
         
         const db = window.activeDbClient || {
             from: () => ({
-                select: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } }) }) }),
+                select: () => ({
+                    order: () => ({ limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } }) }),
+                    eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "Not connected" } }) })
+                }),
                 upsert: () => Promise.resolve({ error: { message: "Not connected" } }),
+                insert: () => Promise.resolve({ error: { message: "Not connected" } }),
                 delete: () => ({ eq: () => Promise.resolve({ error: { message: "Not connected" } }) })
             })
         };
@@ -385,7 +435,7 @@
         const hudNameDisplay = document.getElementById('hud-name-display');
         const nicknameInput = document.getElementById('nickname-input');
         nicknameInput.addEventListener('input', () => {
-            nicknameInput.value = nicknameInput.value.replace(/[^a-zA-Z0-9 _-]/g, '');
+            nicknameInput.value = nicknameInput.value.replace(/[^a-zA-Z0-9֐-׿ _-]/g, '');
         });
         const startHighScoreEl = document.getElementById('start-high-score');
         const endHighScoreEl = document.getElementById('end-high-score');
@@ -403,6 +453,12 @@
         const lbTableBody = document.getElementById('lb-table-body');
         const adminTh = document.getElementById('admin-th');
 
+        const chatScreen = document.getElementById('chat-screen');
+        const chatMessagesEl = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        let chatPollInterval = null;
+
         const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+-/<>~ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω';
         const fontSize = 20; 
         let columns = 0;
@@ -410,6 +466,35 @@
 
         // Admin Session Tracker
         let isAdmin = false;
+
+        // --- PROFANITY FILTER (English + Hebrew) ---
+        const HEBREW_FINAL_LETTER_MAP = { 'ם': 'מ', 'ן': 'נ', 'ץ': 'צ', 'ף': 'פ', 'ך': 'כ' };
+        const BANNED_WORDS_EN = [
+            'fuck', 'shit', 'bitch', 'asshole', 'cunt', 'dick', 'pussy', 'bastard',
+            'whore', 'slut', 'nigger', 'nigga', 'faggot', 'fag', 'retard', 'cock',
+            'twat', 'wanker', 'motherfucker', 'douchebag', 'skank', 'cum', 'jerkoff',
+            'dumbass', 'pornhub', 'rapist'
+        ];
+        const BANNED_WORDS_HE = [
+            'זונה', 'זין', 'כוס', 'מניאק', 'שרמוטה', 'שרמוט', 'חרא', 'מזדיין', 'מזדיינת',
+            'קוקסינל', 'כלבה', 'זובי', 'מפגר', 'בןזונה', 'לזיין', 'תזדיין'
+        ];
+
+        function normalizeForFilter(str) {
+            return (str || '')
+                .toLowerCase()
+                .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+                .split('').map(c => HEBREW_FINAL_LETTER_MAP[c] || c).join('')
+                .replace(/[^a-z0-9֐-׿]/g, '')
+                .replace(/(.)\1{2,}/g, '$1$1');
+        }
+
+        function containsProfanity(str) {
+            const normalized = normalizeForFilter(str);
+            if (!normalized) return false;
+            return BANNED_WORDS_EN.some(w => normalized.includes(w)) ||
+                   BANNED_WORDS_HE.some(w => normalized.includes(w));
+        }
 
         let audioCtx = null;
         function initAudio() {
@@ -517,7 +602,7 @@
 
         // --- BACKEND API LAYER (SUPABASE) ---
         async function fetchGlobalLeaderboard() {
-            lbTableBody.innerHTML = `<tr><td colspan="5" style="color: #0f0; padding: 20px;">FETCHING GRID SCORES...</td></tr>`;
+            lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #0f0; padding: 20px;">FETCHING GRID SCORES...</td></tr>`;
             if (isAdmin) {
                 adminTh.classList.remove('hidden');
             } else {
@@ -527,7 +612,7 @@
             try {
                 const { data, error } = await db
                     .from('leaderboard')
-                    .select('player_token, nickname, score, level')
+                    .select('player_token, nickname, score')
                     .order('score', { ascending: false })
                     .limit(20);
 
@@ -535,7 +620,7 @@
                 renderLeaderboardTable(data);
             } catch (err) {
                 console.error('Leaderboard Fetch Error:', err);
-                lbTableBody.innerHTML = `<tr><td colspan="5" style="color: #f00; padding: 20px;">FAILED TO CONNECT TO GRID</td></tr>`;
+                lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #f00; padding: 20px;">FAILED TO CONNECT TO GRID</td></tr>`;
             }
         }
 
@@ -548,6 +633,26 @@
                 playerData.highScore = newScore;
                 playerData.highScoreLevel = currentLevel;
             }
+
+            // Cross-check against the DB's own record for this player, so a stale/corrupted
+            // local highScore can never push a lower value over an already-submitted best.
+            try {
+                const { data: existing, error: fetchError } = await db
+                    .from('leaderboard')
+                    .select('score, level')
+                    .eq('player_token', playerData.playerToken)
+                    .maybeSingle();
+
+                if (fetchError) throw fetchError;
+
+                if (existing && existing.score > playerData.highScore) {
+                    playerData.highScore = existing.score;
+                    playerData.highScoreLevel = existing.level || playerData.highScoreLevel;
+                }
+            } catch (e) {
+                console.error('Leaderboard Sync Check Error (Non-Fatal):', e);
+            }
+
             localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
             updateHighScoreDisplay();
 
@@ -558,7 +663,7 @@
                         player_token: playerData.playerToken,
                         nickname: nickname,
                         score: playerData.highScore,
-                        level: playerData.highScoreLevel // Level paired with the high score it was reached at, not this run's level
+                        level: playerData.highScoreLevel
                     }], { onConflict: ['player_token'] });
 
                 if (error) {
@@ -596,7 +701,7 @@
         function renderLeaderboardTable(scores) {
             lbTableBody.innerHTML = '';
             if (!Array.isArray(scores) || scores.length === 0) {
-                lbTableBody.innerHTML = `<tr><td colspan="5" style="color: #666; padding: 20px;">NO RECORDS FOUND</td></tr>`;
+                lbTableBody.innerHTML = `<tr><td colspan="4" style="color: #666; padding: 20px;">NO RECORDS FOUND</td></tr>`;
                 return;
             }
 
@@ -609,7 +714,6 @@
                     <td>${rankEmojis[index] || (index + 1)}</td>
                     <td>${safeNickname}</td>
                     <td>${Number(entry.score) || 0}</td>
-                    <td>LVL ${Number(entry.level) || 1}</td>
                 `;
 
                 if (isAdmin) {
@@ -627,6 +731,83 @@
             const token = btn.dataset.token;
             if (token) deleteOperator(token);
         });
+
+        // --- CHAT ---
+        async function fetchChatMessages() {
+            try {
+                const { data, error } = await db
+                    .from('chat_messages')
+                    .select('nickname, message, created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+
+                if (error) throw error;
+                renderChatMessages((data || []).slice().reverse());
+            } catch (err) {
+                console.error('Chat Fetch Error:', err);
+                chatMessagesEl.innerHTML = `<div class="chat-msg" style="color:#f00;">FAILED TO CONNECT TO GRID CHAT</div>`;
+            }
+        }
+
+        function renderChatMessages(messages) {
+            const wasAtBottom = chatMessagesEl.scrollTop + chatMessagesEl.clientHeight >= chatMessagesEl.scrollHeight - 20;
+            chatMessagesEl.innerHTML = messages.map(m => {
+                const safeNick = escapeHtml(m.nickname || 'ANONYMOUS');
+                const safeMsg = escapeHtml(m.message || '');
+                return `<div class="chat-msg"><span class="chat-nick">${safeNick}:</span> ${safeMsg}</div>`;
+            }).join('') || `<div class="chat-msg" style="color:#666;">NO MESSAGES YET. SAY HI.</div>`;
+            if (wasAtBottom) chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+        }
+
+        async function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            if (containsProfanity(message)) {
+                alert('Message rejected: keep it clean.');
+                return;
+            }
+
+            const nickname = (playerData.nickname || nicknameInput.value.trim().toUpperCase() || 'ANONYMOUS');
+            if (containsProfanity(nickname)) {
+                alert('Set a clean nickname on the start screen before chatting.');
+                return;
+            }
+
+            chatInput.value = '';
+            chatSendBtn.disabled = true;
+            try {
+                const { error } = await db
+                    .from('chat_messages')
+                    .insert([{ nickname, message }]);
+                if (error) throw error;
+                fetchChatMessages();
+            } catch (err) {
+                console.error('Chat Send Error:', err);
+                alert('Failed to send message.');
+            } finally {
+                chatSendBtn.disabled = false;
+            }
+        }
+
+        function openChat() {
+            initAudio();
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            chatScreen.classList.remove('hidden');
+            fetchChatMessages();
+            if (chatPollInterval) clearInterval(chatPollInterval);
+            chatPollInterval = setInterval(fetchChatMessages, 3000);
+        }
+
+        function closeChat() {
+            chatScreen.classList.add('hidden');
+            if (chatPollInterval) {
+                clearInterval(chatPollInterval);
+                chatPollInterval = null;
+            }
+            if (!isPlaying) startScreen.classList.remove('hidden');
+        }
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -1152,6 +1333,13 @@
                 return;
             }
 
+            if (containsProfanity(nick)) {
+                nicknameInput.style.borderColor = '#ff0000';
+                setTimeout(() => nicknameInput.style.borderColor = '#0f0', 800);
+                alert('Nickname rejected: choose an appropriate name.');
+                return;
+            }
+
             if (nick === 'LIR') {
                 if (playerData.isAdminDevice) {
                     isAdmin = true;
@@ -1286,6 +1474,14 @@
             if (!isPlaying) {
                 startScreen.classList.remove('hidden');
             }
+        });
+
+        document.getElementById('open-chat-btn').addEventListener('click', openChat);
+        document.getElementById('end-chat-btn').addEventListener('click', openChat);
+        document.getElementById('close-chat-btn').addEventListener('click', closeChat);
+        chatSendBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendChatMessage();
         });
 
         window.addEventListener('mousedown', (e) => {
