@@ -164,7 +164,7 @@ function triggerVibrate(ms) {
 let isMuted = localStorage.getItem('matrix_runner_muted') === 'true';
 
 function updateMuteButton() {
-    muteBtn.textContent = isMuted ? '🔇' : '🔊';
+    muteBtn.textContent = isMuted ? 'SOUND: OFF' : 'SOUND: ON';
 }
 updateMuteButton();
 
