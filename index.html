@@ -9,11 +9,14 @@
 </head>
 <body>
 
+    <button id="mute-btn" class="btn btn-secondary" title="Toggle Sound">🔊</button>
+
     <div id="ui-overlay">
         <div id="top-bar">
             <div>
                 <div class="hud-element" id="score-display">SCORE: 0</div>
                 <div class="hud-element" id="level-display" style="color: #fff;">LEVEL: 1</div>
+                <button id="pause-btn" class="btn btn-secondary" title="Pause">⏸</button>
             </div>
 
             <div id="high-score-center">
@@ -39,6 +42,7 @@
     </div>
 
     <div id="start-screen">
+        <button class="btn btn-secondary corner-help-btn" id="help-btn-start" title="How to play">?</button>
         <div class="title">MATRIX DEFENSE</div>
         <div class="subtitle">Purge corruptions before they breach the firewall.</div>
         <input type="text" id="nickname-input" class="input-field" placeholder="ENTER NICKNAME" maxlength="12">
@@ -47,6 +51,14 @@
             <button class="btn" id="start-btn">PLAY</button>
             <button class="btn btn-secondary" id="open-lb-btn">LEADERBOARD</button>
             <button class="btn btn-secondary" id="open-chat-btn">CHAT<span class="chat-badge hidden" id="chat-badge-start">0</span></button>
+        </div>
+    </div>
+
+    <div id="pause-screen" class="hidden">
+        <div class="title" style="color: #00ffff; text-shadow: 0 0 15px #00ffff;">PAUSED</div>
+        <div class="button-group">
+            <button class="btn btn-secondary" id="resume-btn">RESUME</button>
+            <button class="btn" id="quit-btn" style="border-color: #f00; color: #f00; box-shadow: 0 0 10px #f00;">QUIT</button>
         </div>
     </div>
 
@@ -95,11 +107,15 @@
     </div>
 
     <div id="game-over-screen" class="hidden">
+        <button class="btn btn-secondary corner-help-btn" id="help-btn-end" title="How to play">?</button>
+        <div id="confetti-container"></div>
         <div class="title" style="color: #f00; text-shadow: 0 0 15px #f00;">SYSTEM FAILURE</div>
+        <div class="celebration-badge hidden" id="celebration-badge">🎉 NEW PERSONAL BEST!</div>
         <div class="subtitle" style="color: #aaa; font-size: 12px; margin-bottom: 0;">FINAL SCORE</div>
         <div class="hero-score-badge" id="final-score">0</div>
         <div class="secondary-score-badge" id="end-high-score">PERSONAL BEST: 0</div>
         <div class="stats-badge" id="end-stats"></div>
+        <div id="achievements-row"></div>
         <div class="button-group">
             <button class="btn" id="restart-btn" style="border-color: #f00; color: #f00; box-shadow: 0 0 10px #f00;">REBOOT</button>
             <button class="btn btn-secondary" id="end-lb-btn">GLOBAL LEADERBOARD</button>

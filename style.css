@@ -78,7 +78,33 @@ canvas { display: block; }
 #double-score-ui { color: #ff8800; text-shadow: 0 0 10px #ff8800; }
 #frenzy-ui { color: #fff; text-shadow: 0 0 15px #ff00ff; }
 
-#start-screen, #game-over-screen, #tutorial-screen, #leaderboard-screen, #chat-screen {
+#mute-btn {
+    position: fixed;
+    bottom: 15px;
+    left: 15px;
+    z-index: 20;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+#pause-btn {
+    margin-top: 6px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+#start-screen, #game-over-screen, #tutorial-screen, #leaderboard-screen, #chat-screen, #pause-screen {
     position: absolute;
     top: 0;
     left: 0;
@@ -218,6 +244,20 @@ canvas { display: block; }
     color: #fff;
 }
 
+.corner-help-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
 .hidden { display: none !important; }
 
 #lb-container {
@@ -346,4 +386,55 @@ canvas { display: block; }
     background: rgba(0, 255, 255, 0.18);
     margin-bottom: 10px;
     animation: skeletonPulse 1.2s ease-in-out infinite;
+}
+
+.celebration-badge {
+    color: #ffd700;
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 15px #ffd700, 0 0 30px #ffd700;
+    margin-bottom: 8px;
+    animation: skeletonPulse 0.6s ease-in-out infinite;
+}
+
+#confetti-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+}
+.confetti-piece {
+    position: absolute;
+    top: -20px;
+    width: 8px;
+    height: 14px;
+    opacity: 0.9;
+    animation: confettiFall 2.4s ease-in forwards;
+}
+@keyframes confettiFall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+}
+
+#achievements-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 15px;
+    max-width: 90%;
+}
+.achievement-badge {
+    background: rgba(0, 255, 0, 0.1);
+    border: 1px solid #0f0;
+    color: #0f0;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 12px;
+    text-shadow: 0 0 5px #0f0;
+    box-shadow: 0 0 6px rgba(0, 255, 0, 0.4);
 }

@@ -22,16 +22,29 @@ const startScreen = document.getElementById('start-screen');
 const leaderboardScreen = document.getElementById('leaderboard-screen');
 const tutorialScreen = document.getElementById('tutorial-screen');
 const gameOverScreen = document.getElementById('game-over-screen');
+const pauseScreen = document.getElementById('pause-screen');
 
 const tutBtn = document.getElementById('tut-btn');
 const lbTableBody = document.getElementById('lb-table-body');
 const adminTh = document.getElementById('admin-th');
 
+const muteBtn = document.getElementById('mute-btn');
+const pauseBtn = document.getElementById('pause-btn');
+const resumeBtn = document.getElementById('resume-btn');
+const quitBtn = document.getElementById('quit-btn');
+const helpBtnStart = document.getElementById('help-btn-start');
+const helpBtnEnd = document.getElementById('help-btn-end');
+
+const celebrationBadge = document.getElementById('celebration-badge');
+const confettiContainer = document.getElementById('confetti-container');
+const achievementsEl = document.getElementById('achievements-row');
+
 const SCREENS = {
     start: startScreen,
     leaderboard: leaderboardScreen,
     tutorial: tutorialScreen,
-    gameOver: gameOverScreen
+    gameOver: gameOverScreen,
+    pause: pauseScreen
 };
 
 function showScreen(name) {
@@ -86,7 +99,7 @@ function initAudio() {
 }
 
 function playSound(type) {
-    if (!audioCtx) return;
+    if (!audioCtx || isMuted) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
@@ -146,6 +159,61 @@ function playSound(type) {
 
 function triggerVibrate(ms) {
     if (navigator.vibrate) navigator.vibrate(ms);
+}
+
+let isMuted = localStorage.getItem('matrix_runner_muted') === 'true';
+
+function updateMuteButton() {
+    muteBtn.textContent = isMuted ? '🔇' : '🔊';
+}
+updateMuteButton();
+
+function toggleMute() {
+    isMuted = !isMuted;
+    localStorage.setItem('matrix_runner_muted', String(isMuted));
+    updateMuteButton();
+    if (musicNodes) {
+        musicNodes.masterGain.gain.value = isMuted ? 0 : 0.05;
+    }
+}
+
+let musicNodes = null;
+
+function startMusic() {
+    if (!audioCtx || musicNodes) return;
+
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.value = isMuted ? 0 : 0.05;
+    masterGain.connect(audioCtx.destination);
+
+    const oscillators = [55, 82.41, 110, 130.81].map(freq => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.25;
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start();
+        return osc;
+    });
+
+    const lfo = audioCtx.createOscillator();
+    lfo.frequency.value = 0.1;
+    const lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 0.03;
+    lfo.connect(lfoGain);
+    lfoGain.connect(masterGain.gain);
+    lfo.start();
+
+    musicNodes = { masterGain, oscillators, lfo };
+}
+
+function stopMusic() {
+    if (!musicNodes) return;
+    musicNodes.oscillators.forEach(o => o.stop());
+    musicNodes.lfo.stop();
+    musicNodes = null;
 }
 
 let playerData = { playerToken: '', nickname: '', highScore: 0, highScoreLevel: 1, hasSeenTut: false, isAdminDevice: false, lastSeenChatAt: null };
@@ -332,9 +400,12 @@ function resizeCanvas() {
 resizeCanvas();
 
 let isPlaying = false;
+let isPaused = false;
 let score = 0;
 let level = 1;
 let combo = 1;
+let maxCombo = 1;
+let runStartHighScore = 0;
 let glitchesCleared = 0;
 let bulletTimeEnergy = 100;
 let isBulletTime = false;
@@ -604,33 +675,35 @@ function gameLoop() {
     ctx.stroke();
     ctx.restore();
 
-    if (freezeTimer > 0) freezeTimer--;
+    if (!isPaused && freezeTimer > 0) freezeTimer--;
 
     if (doubleScoreTimer > 0) {
-        doubleScoreTimer--;
+        if (!isPaused) doubleScoreTimer--;
         doubleScoreUI.style.opacity = doubleScoreTimer > 60 ? '1' : (doubleScoreTimer % 10 < 5 ? '1' : '0');
     } else {
         doubleScoreUI.style.opacity = '0';
     }
 
     if (frenzyTimer > 0) {
-        frenzyTimer--;
-        frenzyUI.style.opacity = '1';
-        if (frenzyTimer % 10 === 0) {
-            let t = new GlitchTarget(undefined, undefined, 'red');
-            t.isParabolic = true;
-            t.x = Math.random() < 0.5 ? -20 : canvas.width + 20;
-            t.y = canvas.height - (Math.random() * 200 + 100);
-            t.vx = (t.x < 0 ? 1 : -1) * (Math.random() * 4 + 3);
-            t.vy = -(Math.random() * 7 + 8);
-            t.gravity = 0.15;
-            glitches.push(t);
+        if (!isPaused) {
+            frenzyTimer--;
+            if (frenzyTimer % 10 === 0) {
+                let t = new GlitchTarget(undefined, undefined, 'red');
+                t.isParabolic = true;
+                t.x = Math.random() < 0.5 ? -20 : canvas.width + 20;
+                t.y = canvas.height - (Math.random() * 200 + 100);
+                t.vx = (t.x < 0 ? 1 : -1) * (Math.random() * 4 + 3);
+                t.vy = -(Math.random() * 7 + 8);
+                t.gravity = 0.15;
+                glitches.push(t);
+            }
         }
+        frenzyUI.style.opacity = '1';
     } else {
         frenzyUI.style.opacity = '0';
     }
 
-    if (isPlaying) {
+    if (isPlaying && !isPaused) {
         if (isBulletTime) {
             bulletTimeEnergy = Math.max(0, bulletTimeEnergy - 0.7);
             if (bulletTimeEnergy === 0) deactivateBulletTime();
@@ -660,14 +733,14 @@ function gameLoop() {
     }
 
     if (isPlaying) {
-        if (frenzyTimer === 0) spawnGlitches();
+        if (!isPaused && frenzyTimer === 0) spawnGlitches();
 
         for (let i = glitches.length - 1; i >= 0; i--) {
             const g = glitches[i];
-            g.update(speedMult, glitches);
+            if (!isPaused) g.update(speedMult, glitches);
             g.draw(ctx);
 
-            if (g.y > boundaryY) {
+            if (!isPaused && g.y > boundaryY) {
                 const safeToMiss = ['decoy', 'fatal_bomb', 'emp_bomb', 'double_score', 'frenzy'];
 
                 if (safeToMiss.includes(g.type) || g.isParabolic) {
@@ -679,7 +752,7 @@ function gameLoop() {
             }
         }
 
-        if (isBulletTime && activeTouches > 0) {
+        if (!isPaused && isBulletTime && activeTouches > 0) {
             shockwaveRadius = (shockwaveRadius + 8) % 180;
             ctx.save();
             ctx.beginPath();
@@ -791,6 +864,7 @@ function processTap(pt) {
 
             score += points;
             combo++;
+            maxCombo = Math.max(maxCombo, combo);
             glitchesCleared++;
 
             if (score > playerData.highScore) {
@@ -949,11 +1023,42 @@ function startFromTutorial() {
     beginActualGame();
 }
 
+const ACHIEVEMENTS = [
+    { label: '🏆 NEW BEST', check: (s) => s.isNewBest },
+    { label: '🛡 LEVEL 5+', check: (s) => s.level >= 5 },
+    { label: '⚔ LEVEL 10+', check: (s) => s.level >= 10 },
+    { label: '🔥 10x COMBO', check: (s) => s.maxCombo >= 10 },
+    { label: '💫 20x COMBO', check: (s) => s.maxCombo >= 20 },
+    { label: '💰 1000+ SCORE', check: (s) => s.score >= 1000 }
+];
+
+function renderAchievements(stats) {
+    const earned = ACHIEVEMENTS.filter(a => a.check(stats));
+    achievementsEl.innerHTML = earned.map(a => `<span class="achievement-badge">${a.label}</span>`).join('');
+}
+
+function triggerCelebration() {
+    celebrationBadge.classList.remove('hidden');
+    const colors = ['#0f0', '#00ffff', '#ffd700', '#ff00ff', '#ff8800'];
+    for (let i = 0; i < 40; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.left = Math.random() * 100 + '%';
+        piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+        piece.style.animationDelay = (Math.random() * 0.5) + 's';
+        piece.style.animationDuration = (1.8 + Math.random() * 1.2) + 's';
+        confettiContainer.appendChild(piece);
+    }
+    setTimeout(() => { confettiContainer.innerHTML = ''; }, 3500);
+}
+
 function beginActualGame() {
     initAudio();
     score = 0;
     level = 1;
     combo = 1;
+    maxCombo = 1;
+    runStartHighScore = playerData.highScore;
     glitchesCleared = 0;
     bulletTimeEnergy = 100;
     freezeTimer = 0;
@@ -968,26 +1073,103 @@ function beginActualGame() {
     hudHighScoreEl.innerText = playerData.highScore;
     hudNameDisplay.innerText = (nicknameInput.value || 'OPERATOR').toUpperCase();
 
+    celebrationBadge.classList.add('hidden');
+    confettiContainer.innerHTML = '';
+    achievementsEl.innerHTML = '';
+
     showScreen(null);
     isPlaying = true;
+    isPaused = false;
+    startMusic();
+}
+
+function pauseGame() {
+    if (!isPlaying || isPaused) return;
+    isPaused = true;
+    stopMusic();
+    showScreen('pause');
+}
+
+function resumeGame() {
+    isPaused = false;
+    showScreen(null);
+    startMusic();
+}
+
+function quitGame() {
+    isPlaying = false;
+    isPaused = false;
+    deactivateBulletTime();
+    stopMusic();
+    showScreen('start');
 }
 
 function endGame() {
     isPlaying = false;
+    isPaused = false;
     deactivateBulletTime();
+    stopMusic();
     playSound('over');
     triggerVibrate([100, 50, 100]);
 
+    const isNewBest = score > runStartHighScore;
+
     document.getElementById('end-stats').innerText = `REACHED LEVEL ${level}`;
     finalScoreEl.innerText = score;
+    renderAchievements({ isNewBest, level, maxCombo, score });
+    if (isNewBest) triggerCelebration();
     showScreen('gameOver');
 
     submitScoreToBackend(score, level);
 }
 
+let helpOnlyMode = false;
+
+function openHelp() {
+    initAudio();
+    helpOnlyMode = true;
+    tutBtn.textContent = 'BACK';
+    showScreen('tutorial');
+}
+
+function closeHelp() {
+    helpOnlyMode = false;
+    tutBtn.textContent = 'BEGIN';
+    showScreen('start');
+}
+
 document.getElementById('start-btn').addEventListener('click', onPlayClicked);
 document.getElementById('restart-btn').addEventListener('click', beginActualGame);
-tutBtn.addEventListener('click', startFromTutorial);
+tutBtn.addEventListener('click', () => {
+    if (helpOnlyMode) {
+        closeHelp();
+    } else {
+        startFromTutorial();
+    }
+});
+
+helpBtnStart.addEventListener('click', openHelp);
+helpBtnEnd.addEventListener('click', openHelp);
+
+muteBtn.addEventListener('click', () => {
+    initAudio();
+    toggleMute();
+});
+
+pauseBtn.addEventListener('click', () => {
+    initAudio();
+    pauseGame();
+});
+
+resumeBtn.addEventListener('click', () => {
+    initAudio();
+    resumeGame();
+});
+
+quitBtn.addEventListener('click', () => {
+    initAudio();
+    quitGame();
+});
 
 document.getElementById('open-lb-btn').addEventListener('click', () => {
     initAudio();
@@ -1008,7 +1190,7 @@ document.getElementById('close-lb-btn').addEventListener('click', () => {
 
 window.addEventListener('mousedown', (e) => {
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('.btn')) return;
-    if (!isPlaying) return;
+    if (!isPlaying || isPaused) return;
     activeTouches = 1;
     processTap({ x: e.clientX, y: e.clientY });
 });
@@ -1020,7 +1202,7 @@ window.addEventListener('mouseup', () => {
 
 window.addEventListener('touchstart', (e) => {
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('.btn')) return;
-    if (!isPlaying) return;
+    if (!isPlaying || isPaused) return;
     e.preventDefault();
 
     activeTouches = e.touches.length;
