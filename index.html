@@ -481,7 +481,7 @@
             if (navigator.vibrate) navigator.vibrate(ms);
         }
 
-        let playerData = { playerToken: '', nickname: '', highScore: 0, hasSeenTut: false, isAdminDevice: false };
+        let playerData = { playerToken: '', nickname: '', highScore: 0, highScoreLevel: 1, hasSeenTut: false, isAdminDevice: false };
         
         function loadSavedProfile() {
             const saved = localStorage.getItem('matrix_runner_profile');
@@ -543,6 +543,7 @@
 
             if (newScore > playerData.highScore) {
                 playerData.highScore = newScore;
+                playerData.highScoreLevel = currentLevel;
             }
             localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
             updateHighScoreDisplay();
@@ -550,11 +551,11 @@
             try {
                 const { error } = await db
                     .from('leaderboard')
-                    .upsert([{ 
-                        player_token: playerData.playerToken, 
-                        nickname: nickname, 
+                    .upsert([{
+                        player_token: playerData.playerToken,
+                        nickname: nickname,
                         score: playerData.highScore,
-                        level: currentLevel // Accurately save the peak level achieved
+                        level: playerData.highScoreLevel // Level paired with the high score it was reached at, not this run's level
                     }], { onConflict: ['player_token'] });
 
                 if (error) {
@@ -1055,6 +1056,7 @@
 
                     if (score > playerData.highScore) {
                         playerData.highScore = score;
+                        playerData.highScoreLevel = level;
                         hudHighScoreEl.innerText = score;
                     }
 
@@ -1122,7 +1124,7 @@
                 return;
             }
 
-            if (nick === 'LIRAN') {
+            if (nick === 'LIR') {
                 if (playerData.isAdminDevice) {
                     isAdmin = true;
                 } else {
@@ -1140,12 +1142,11 @@
             } else {
                 isAdmin = false;
                 playerData.isAdminDevice = false;
-                localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
 
                 try {
                     const { data, error } = await db
                         .from('leaderboard')
-                        .select('player_token, score')
+                        .select('player_token, score, level')
                         .eq('nickname', nick)
                         .maybeSingle();
 
@@ -1156,17 +1157,28 @@
                             alert(`The operator name "${nick}" is already registered by another user! Please choose a different nickname.`);
                             nicknameInput.style.borderColor = '#ff0000';
                             setTimeout(() => nicknameInput.style.borderColor = '#0f0', 800);
-                            return; 
+                            return;
                         } else {
                             if (data.score > playerData.highScore) {
                                 playerData.highScore = data.score;
+                                playerData.highScoreLevel = data.level || 1;
                                 updateHighScoreDisplay();
                             }
                         }
+                    } else if (playerData.nickname && playerData.nickname !== nick) {
+                        // No row for this nickname yet, but this device's token belongs to a
+                        // different, previously-used nickname. Mint a fresh token so this new
+                        // identity gets its own leaderboard row instead of overwriting the old one.
+                        playerData.playerToken = 'tok_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+                        playerData.highScore = 0;
+                        playerData.highScoreLevel = 1;
+                        updateHighScoreDisplay();
                     }
                 } catch (err) {
                     console.error('Nickname availability check error:', err);
                 }
+
+                localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
             }
 
             startScreen.classList.add('hidden');
@@ -1287,3 +1299,4 @@
     </script>
 </body>
 </html>
+
