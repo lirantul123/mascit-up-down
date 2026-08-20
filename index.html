@@ -483,7 +483,7 @@
             if (navigator.vibrate) navigator.vibrate(ms);
         }
 
-        let playerData = { playerToken: '', nickname: '', highScore: 0, hasSeenTut: false };
+        let playerData = { playerToken: '', nickname: '', highScore: 0, hasSeenTut: false, isAdminDevice: false };
         
         function loadSavedProfile() {
             const saved = localStorage.getItem('matrix_runner_profile');
@@ -493,6 +493,9 @@
                     if (playerData.nickname) {
                         nicknameInput.value = playerData.nickname;
                         hudNameDisplay.innerText = playerData.nickname.toUpperCase();
+                    }
+                    if (playerData.isAdminDevice) {
+                        isAdmin = true;
                     }
                 } catch(e){}
             }
@@ -536,26 +539,27 @@
             }
         }
 
-        async function submitScoreToBackend(score, level) {
+        async function submitScoreToBackend(newScore, currentLevel) {
             const nickname = nicknameInput.value.trim().toUpperCase() || 'ANONYMOUS';
             playerData.nickname = nickname;
             hudNameDisplay.innerText = nickname;
 
-            if (score > playerData.highScore) {
-                playerData.highScore = score;
+            // Always verify and store the highest score locally first
+            if (newScore > playerData.highScore) {
+                playerData.highScore = newScore;
             }
             localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
             updateHighScoreDisplay();
 
-            // Secure upsert using unique player_token to prevent score hijacking/overriding by duplicate names
+            // Secure upsert using unique player_token to prevent score hijacking/overriding
             try {
                 const { error } = await db
                     .from('leaderboard')
                     .upsert([{ 
                         player_token: playerData.playerToken, 
                         nickname: nickname, 
-                        score: score, 
-                        level: level 
+                        score: playerData.highScore, // Save the actual high score to db
+                        level: currentLevel 
                     }], { onConflict: ['player_token'] });
 
                 if (error) {
@@ -571,7 +575,6 @@
             if (!confirm(`Purge operative from the system grid?`)) return;
 
             try {
-                // Delete by unique player_token if available, fallback to nickname
                 const { error } = await db
                     .from('leaderboard')
                     .delete()
@@ -1109,20 +1112,28 @@
                 return;
             }
 
-            // Admin verification for "LIRAN" (case-insensitive check)
+            // Admin verification for "LIRAN" (Bypasses password if already remembered on this device)
             if (nick === 'LIRAN') {
-                const pass = prompt('Enter Admin Password:');
-                if (pass === '123456') {
+                if (playerData.isAdminDevice) {
                     isAdmin = true;
                 } else {
-                    alert('ACCESS DENIED: Incorrect Admin Password.');
-                    isAdmin = false;
-                    return;
+                    const pass = prompt('Enter Admin Password:');
+                    if (pass === '123456') {
+                        isAdmin = true;
+                        playerData.isAdminDevice = true;
+                        localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
+                    } else {
+                        alert('ACCESS DENIED: Incorrect Admin Password.');
+                        isAdmin = false;
+                        return;
+                    }
                 }
             } else {
                 isAdmin = false;
+                playerData.isAdminDevice = false;
+                localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
 
-                // --- CHECK IF NICKNAME ALREADY EXISTS IN DB (Skipped for Liran) ---
+                // --- CHECK IF NICKNAME ALREADY EXISTS IN DB (For normal players only) ---
                 try {
                     const { data, error } = await db
                         .from('leaderboard')
@@ -1133,14 +1144,12 @@
                     if (error) throw error;
 
                     if (data) {
-                        // If the nickname exists and belongs to a different device/token, block it
                         if (data.player_token !== playerData.playerToken) {
                             alert(`The operator name "${nick}" is already registered by another user! Please choose a different nickname.`);
                             nicknameInput.style.borderColor = '#ff0000';
                             setTimeout(() => nicknameInput.style.borderColor = '#0f0', 800);
                             return; 
                         } else {
-                            // Belongs to this device, sync personal best if needed
                             if (data.score > playerData.highScore) {
                                 playerData.highScore = data.score;
                                 updateHighScoreDisplay();
@@ -1152,7 +1161,6 @@
                 }
             }
 
-            // Proceed to tutorial or game
             startScreen.classList.add('hidden');
             if (!playerData.hasSeenTut) {
                 tutorialScreen.classList.remove('hidden');
