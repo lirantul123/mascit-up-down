@@ -290,9 +290,7 @@
         </div>
 
         <div id="combo-display">COMBO x2!</div>
-        <div class="hud-element" style="text-align: center; font-size: 12px; opacity: 0.7;">
-            TAP GLITCHES • HOLD FOR TACTICAL SLOW-MO
-        </div>
+        <div></div>
     </div>
 
     <!-- Start Screen -->
@@ -335,9 +333,9 @@
         <div class="subtitle" id="tut-text">
             <b>TAP</b> to destroy targets.<br>
             <b>HOLD SCREEN</b> for slow-mo.<br><br>
-            <span style="color:#00ffff;">Blue=Freeze</span> | <span style="color:#ffd700;">Gold=Energy</span> | <span style="color:#ff00aa;">Pink=Shield (3 Taps)</span><br>
+            <span style="color:#00ffff;">Blue=Freeze (Lvl 8+)</span> | <span style="color:#ffd700;">Gold=Energy</span> | <span style="color:#ff00aa;">Pink=Shield (3 Taps)</span><br>
             <span style="color:#ff8800;">'2x'=Double Pts</span> | <span style="color:#ff00ff;">★=Frenzy Wave</span><br><br>
-            <b style="color:red; font-size:15px;">DO NOT TAP BOMBS OR WHITE BOXES!</b><br>
+            <b style="color:red; font-size:15px;">DO NOT LET GLITCHES HIT THE BOTTOM BOUNDARY!</b><br>
             <span style="color:#f00;">Red Bomb 💣☠ = FATAL ERROR (Insta-Death)</span><br>
             <span style="color:#ff0;">Yellow Bomb 💣⚡ = EMP (Drains Bullet Time)</span>
         </div>
@@ -500,7 +498,6 @@
                 } catch(e){}
             }
 
-            // Generate a unique secret token for this browser if it doesn't have one yet
             if (!playerData.playerToken) {
                 playerData.playerToken = 'tok_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
                 localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
@@ -544,22 +541,20 @@
             playerData.nickname = nickname;
             hudNameDisplay.innerText = nickname;
 
-            // Always verify and store the highest score locally first
             if (newScore > playerData.highScore) {
                 playerData.highScore = newScore;
             }
             localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
             updateHighScoreDisplay();
 
-            // Secure upsert using unique player_token to prevent score hijacking/overriding
             try {
                 const { error } = await db
                     .from('leaderboard')
                     .upsert([{ 
                         player_token: playerData.playerToken, 
                         nickname: nickname, 
-                        score: playerData.highScore, // Save the actual high score to db
-                        level: currentLevel 
+                        score: playerData.highScore,
+                        level: currentLevel // Accurately save the peak level achieved
                     }], { onConflict: ['player_token'] });
 
                 if (error) {
@@ -603,7 +598,7 @@
                     <td>${rankEmojis[index] || (index + 1)}</td>
                     <td>${entry.nickname || 'ANONYMOUS'}</td>
                     <td>${entry.score}</td>
-                    <td>LVL ${entry.level}</td>
+                    <td>LVL ${entry.level || 1}</td>
                 `;
 
                 if (isAdmin) {
@@ -702,7 +697,7 @@
                     this.type = 'decoy';
                 } else if (rand > 0.55) {
                     this.type = 'gold';
-                } else if (rand > 0.45 && level >= 5) {
+                } else if (rand > 0.45 && level >= 8) { // Blue freeze-time obstacle unlocked at level 8+
                     this.type = 'blue';
                 } else if (rand > 0.35) {
                     this.type = 'purple';
@@ -854,6 +849,20 @@
             ctx.fillStyle = isBulletTime ? 'rgba(0, 15, 10, 0.3)' : 'rgba(0, 0, 0, 0.28)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Draw Bottom Failure Boundary Line
+            const boundaryY = canvas.height - 40;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.7)';
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = '#f00';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath();
+            ctx.moveTo(0, boundaryY);
+            ctx.lineTo(canvas.width, boundaryY);
+            ctx.stroke();
+            ctx.restore();
+
             if (freezeTimer > 0) freezeTimer--;
             
             if (doubleScoreTimer > 0) {
@@ -917,7 +926,8 @@
                     g.update(speedMult, glitches);
                     g.draw(ctx);
 
-                    if (g.y > canvas.height + 20) {
+                    // Trigger game over if glitch crosses the bottom boundary line
+                    if (g.y > boundaryY) {
                         const safeToMiss = ['decoy', 'fatal_bomb', 'emp_bomb', 'double_score', 'frenzy'];
                         
                         if (safeToMiss.includes(g.type) || g.isParabolic) {
@@ -1112,7 +1122,6 @@
                 return;
             }
 
-            // Admin verification for "LIRAN" (Bypasses password if already remembered on this device)
             if (nick === 'LIRAN') {
                 if (playerData.isAdminDevice) {
                     isAdmin = true;
@@ -1133,7 +1142,6 @@
                 playerData.isAdminDevice = false;
                 localStorage.setItem('matrix_runner_profile', JSON.stringify(playerData));
 
-                // --- CHECK IF NICKNAME ALREADY EXISTS IN DB (For normal players only) ---
                 try {
                     const { data, error } = await db
                         .from('leaderboard')
@@ -1211,11 +1219,9 @@
             finalScoreEl.innerText = score;
             gameOverScreen.classList.remove('hidden');
 
-            // Submit score securely in the background using player_token
             submitScoreToBackend(score, level);
         }
 
-        // Event Listeners
         document.getElementById('start-btn').addEventListener('click', onPlayClicked);
         document.getElementById('restart-btn').addEventListener('click', beginActualGame);
         tutBtn.addEventListener('click', startFromTutorial);
