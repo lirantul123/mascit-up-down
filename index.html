@@ -87,7 +87,7 @@
         #double-score-ui { color: #ff8800; text-shadow: 0 0 10px #ff8800; }
         #frenzy-ui { color: #fff; text-shadow: 0 0 15px #ff00ff; }
 
-        #start-screen, #game-over-screen, #tutorial-screen, #leaderboard-screen {
+        #start-screen, #game-over-screen, #tutorial-screen, #leaderboard-screen, #chat-screen {
             position: absolute;
             top: 0;
             left: 0;
@@ -291,6 +291,9 @@
         }
         #chat-input-row .input-field {
             margin-bottom: 0;
+            flex: 1;
+            min-width: 0;
+            width: auto;
         }
     </style>
 </head>
@@ -366,7 +369,7 @@
             <div id="chat-messages"></div>
         </div>
         <div id="chat-input-row">
-            <input type="text" id="chat-input" class="input-field" placeholder="TYPE MESSAGE..." maxlength="200" style="width: 200px;">
+            <input type="text" id="chat-input" class="input-field" placeholder="TYPE MESSAGE..." maxlength="200">
             <button class="btn btn-secondary" id="chat-send-btn" style="padding: 10px 20px; font-size:14px;">SEND</button>
         </div>
         <button class="btn btn-secondary" id="close-chat-btn" style="margin-top:15px;">BACK</button>
