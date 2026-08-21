@@ -337,6 +337,23 @@ async function submitScoreToBackend(newScore, currentLevel) {
     } catch (e) {
         console.error('Score Submission Exception:', e);
     }
+
+    try {
+        const { error: histError } = await db
+            .from('score_history')
+            .insert([{
+                player_token: playerData.playerToken,
+                nickname: nickname,
+                score: newScore,
+                level: currentLevel
+            }]);
+
+        if (histError) {
+            console.error('Score History Insert Error (Non-Fatal):', histError.message);
+        }
+    } catch (e) {
+        console.error('Score History Insert Exception:', e);
+    }
 }
 
 async function deleteOperator(tokenOrName) {
@@ -368,11 +385,16 @@ function renderLeaderboardTable(scores) {
         const rankEmojis = ['👑', '🥈', '🥉', '4️⃣', '5️⃣'];
         const row = document.createElement('tr');
         const safeNickname = escapeHtml(entry.nickname || 'ANONYMOUS');
+        const bestScore = Number(entry.score) || 0;
+
+        row.dataset.token = entry.player_token;
+        row.dataset.nickname = entry.nickname || 'ANONYMOUS';
+        row.dataset.score = bestScore;
 
         let html = `
             <td>${rankEmojis[index] || (index + 1)}</td>
             <td>${safeNickname}</td>
-            <td>${Number(entry.score) || 0}</td>
+            <td>${bestScore}</td>
         `;
 
         if (isAdmin) {
@@ -384,11 +406,87 @@ function renderLeaderboardTable(scores) {
     });
 }
 
+function closeOperatorDetailRows() {
+    lbTableBody.querySelectorAll('.lb-detail-row').forEach(r => r.remove());
+}
+
+function renderOperatorHistoryRows(tbody, rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="2" style="color: #666; padding: 10px;">NO RUN HISTORY YET</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = rows.map(entry => {
+        const when = entry.created_at ? new Date(entry.created_at).toLocaleString() : '—';
+        return `<tr><td>${when}</td><td>${Number(entry.score) || 0}</td></tr>`;
+    }).join('');
+}
+
+async function toggleOperatorDetail(row) {
+    const existing = row.nextElementSibling;
+    if (existing && existing.classList.contains('lb-detail-row') && existing.dataset.detailFor === row.dataset.token) {
+        existing.remove();
+        return;
+    }
+
+    closeOperatorDetailRows();
+
+    const colspan = adminTh.classList.contains('hidden') ? 3 : 4;
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'lb-detail-row';
+    detailRow.dataset.detailFor = row.dataset.token;
+    detailRow.innerHTML = `
+        <td colspan="${colspan}">
+            <div class="lb-detail-panel">
+                <div class="lb-detail-best">BEST: ${Number(row.dataset.score) || 0}</div>
+                <table class="score-table lb-detail-table">
+                    <thead><tr><th>DATE &amp; TIME</th><th>SCORE</th></tr></thead>
+                    <tbody class="lb-detail-body">
+                        ${Array.from({ length: 5 }).map(() => `
+                            <tr class="skeleton-row">
+                                <td><span class="skeleton-bar" style="width:110px;"></span></td>
+                                <td><span class="skeleton-bar" style="width:40px;"></span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </td>
+    `;
+    row.after(detailRow);
+
+    const detailBody = detailRow.querySelector('.lb-detail-body');
+    const token = row.dataset.token;
+
+    try {
+        const { data, error } = await db
+            .from('score_history')
+            .select('score, created_at')
+            .eq('player_token', token)
+            .order('score', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        if (error) throw error;
+        renderOperatorHistoryRows(detailBody, data);
+    } catch (err) {
+        console.error('Operator History Fetch Error:', err);
+        detailBody.innerHTML = `<tr><td colspan="2" style="color: #f00; padding: 10px;">FAILED TO CONNECT TO GRID</td></tr>`;
+    }
+}
+
 lbTableBody.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-danger');
-    if (!btn) return;
-    const token = btn.dataset.token;
-    if (token) deleteOperator(token);
+    const purgeBtn = e.target.closest('.btn-danger');
+    if (purgeBtn) {
+        const token = purgeBtn.dataset.token;
+        if (token) deleteOperator(token);
+        return;
+    }
+
+    const row = e.target.closest('tr[data-token]');
+    if (row) {
+        toggleOperatorDetail(row);
+    }
 });
 
 function resizeCanvas() {

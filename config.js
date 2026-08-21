@@ -9,7 +9,13 @@ const db = window.activeDbClient || {
     from: () => ({
         select: () => ({
             order: () => ({ limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } }) }),
-            eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "Not connected" } }) }),
+            eq: () => ({
+                maybeSingle: () => Promise.resolve({ data: null, error: { message: "Not connected" } }),
+                order: () => ({
+                    order: () => ({ limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } }) }),
+                    limit: () => Promise.resolve({ data: [], error: { message: "Not connected" } })
+                })
+            }),
             gt: () => Promise.resolve({ count: 0, error: { message: "Not connected" } })
         }),
         upsert: () => Promise.resolve({ error: { message: "Not connected" } }),

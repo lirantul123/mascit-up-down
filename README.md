@@ -38,9 +38,19 @@ create table chat_messages (
   message text not null,
   created_at timestamptz not null default now()
 );
+
+create table score_history (
+  id bigint generated always as identity primary key,
+  player_token text not null,
+  nickname text not null,
+  score integer not null default 0,
+  level integer not null default 1,
+  created_at timestamptz not null default now()
+);
+create index score_history_player_token_idx on score_history (player_token, created_at desc);
 ```
 
-Both need RLS enabled with permissive anon read/write policies (the anon key is safe to expose client-side; it's scoped by these policies, not a secret):
+All three need RLS enabled with permissive anon read/write policies (the anon key is safe to expose client-side; it's scoped by these policies, not a secret):
 
 ```sql
 alter table leaderboard enable row level security;
@@ -49,6 +59,10 @@ create policy "anon all" on leaderboard for all to anon, authenticated using (tr
 alter table chat_messages enable row level security;
 create policy "anon read" on chat_messages for select to anon, authenticated using (true);
 create policy "anon insert" on chat_messages for insert to anon, authenticated with check (true);
+
+alter table score_history enable row level security;
+create policy "anon read" on score_history for select to anon, authenticated using (true);
+create policy "anon insert" on score_history for insert to anon, authenticated with check (true);
 ```
 
 For chat messages to push live to other players instantly (instead of within ~15s via the fallback poll), enable Realtime on `chat_messages`:
@@ -65,5 +79,6 @@ alter publication supabase_realtime add table chat_messages;
 
 - Tap-to-destroy reflex gameplay with combo scoring, bullet-time slow-mo, and escalating hazard types
 - Global leaderboard (always shows each player's true best score, cross-checked against the DB on every submit)
+- Tap an operator on the leaderboard to expand their file inline (right under their row): best score plus their 5 most recent runs with date & time
 - Global chat with live updates, per-message timestamps, send rate-limiting, and a profanity filter (English + Hebrew) applied to both nicknames and messages
 - Unread-message badge on the chat button
